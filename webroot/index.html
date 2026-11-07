@@ -1,0 +1,2768 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>猫娘助手</title>
+    
+    <script src="./lib/markdown-it.min.js"></script>
+    <script src="./lib/katex.min.js"></script>
+    <script src="./lib/mhchem.min.js"></script>
+    <link rel="stylesheet" href="./lib/katex.min.css">
+    <script src="./lib/mermaid.min.js"></script>
+    <script src="./lib/purify.js"></script>
+    <script src="./lib/officeparser.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #121212; --msg-user: #2b5278; --msg-bot: #212121;
+            --text-color: #e1e1e1; --accent: #ff79c6; --sys: #888;
+            --btn-bg: #3a3a3a; --btn-yes: #4caf50; --btn-no: #f44336; --btn-read: #ff9800;
+            --btn-stop: #f44336;
+        }
+        body {
+            margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color); color: var(--text-color);
+            display: flex; flex-direction: column; height: 100vh;
+            overflow: hidden;
+        }
+
+        #splash-screen {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: var(--bg-color); z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.4s ease;
+        }
+        #splash-screen.hide { opacity: 0; pointer-events: none; }
+        .splash-img-container {
+            width: 140px; height: 140px; border-radius: 50%;
+            overflow: hidden; margin-bottom: 20px;
+            box-shadow: 0 0 20px rgba(255, 121, 198, 0.3);
+            animation: breath 2.5s infinite ease-in-out;
+        }
+        .splash-img-container img { width: 100%; height: 100%; object-fit: cover; }
+        #splash-progress { font-size: 13px; color: var(--sys); font-family: monospace; letter-spacing: 1px; }
+        @keyframes breath {
+            0% { transform: scale(0.95); box-shadow: 0 0 15px rgba(255, 121, 198, 0.2); }
+            50% { transform: scale(1.05); box-shadow: 0 0 30px rgba(255, 121, 198, 0.5); }
+            100% { transform: scale(0.95); box-shadow: 0 0 15px rgba(255, 121, 198, 0.2); }
+        }
+        
+        #chat-container { flex: 1; overflow-y: auto; padding: 0 15px 15px 15px; display: flex; flex-direction: column; gap: 10px; position: relative;}
+        #pull-refresh { height: 0; display: flex; align-items: center; justify-content: center; color: #888; font-size: 12px; overflow: hidden; transition: height 0.2s; flex-shrink: 0; }
+        
+        .msg-wrapper { display: flex; flex-direction: column; width: 100%; margin-bottom: 5px; position: relative;}
+        .msg-wrapper.user { align-items: flex-end; }
+        .msg-wrapper.bot { align-items: flex-start; }
+
+        .msg-header { font-size: 10px; color: #888; margin-bottom: 2px; margin-left: 5px; margin-right: 5px; display: flex; gap: 6px; align-items: center; }
+        .msg-time { color: #555; }
+
+        .message {
+            max-width: 85%; padding: 10px 14px; border-radius: 16px;
+            font-size: 15px; line-height: 1.6; word-wrap: break-word;
+            animation: fadeIn 0.3s ease;
+            overflow-x: hidden;
+            position: relative;
+        }
+        .user .message { background-color: var(--msg-user); border-bottom-right-radius: 4px; white-space: pre-wrap; }
+        .bot .message { background-color: var(--msg-bot); border-bottom-left-radius: 4px; border-left: 3px solid var(--accent); }
+        
+        .withdraw-btn {
+            font-size: 11px; color: #aaa; cursor: pointer; margin-top: 4px; margin-right: 5px; text-align: right;
+            padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.05); display: inline-block;
+        }
+        .withdraw-btn:active { background: rgba(255,255,255,0.15); }
+
+        .message-img { display: block; max-width: 180px; max-height: 180px; border-radius: 8px; margin-bottom: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,0.2); }
+        
+        .message-files-container { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+        .message-file { 
+            display: flex; align-items: center; font-family: monospace; 
+            background: rgba(0,0,0,0.2); padding: 8px 12px; 
+            border-radius: 8px; font-size: 13px; 
+            border-left: 3px solid #ffb86c; color: #e1e1e1;
+            word-break: break-all;
+        }
+
+        .reasoning-panel { background-color: rgba(255, 255, 255, 0.05); border-left: 2px solid #888; border-radius: 4px; margin-bottom: 10px; font-size: 13px; color: #aaa; }
+        .reasoning-panel summary { cursor: pointer; padding: 6px 10px; font-weight: bold; outline: none; user-select: none; list-style: none; }
+        .reasoning-panel summary::-webkit-details-marker { display: none; }
+        .reasoning-panel summary::before { content: '▶ '; font-size: 10px; display: inline-block; transition: transform 0.2s; }
+        .reasoning-panel[open] summary::before { transform: rotate(90deg); }
+        .reasoning-content { padding: 10px; border-top: 1px solid rgba(255,255,255,0.1); white-space: pre-wrap; max-height: 200px; overflow-y: auto; font-family: monospace; word-break: break-all; font-size: 12px; }
+
+        .system-msg { align-self: center; background-color: transparent; color: var(--sys); font-size: 12px; border: 1px dashed #444; padding: 4px 10px; border-radius: 8px; }
+        .error-msg { align-self: center; background-color: #3a1a1a; color: #ff8888; font-size: 12px; border: 1px solid #662222; padding: 8px 12px; border-radius: 8px; word-break: break-all; white-space: pre-wrap; }
+        
+        .message h1, .message h2, .message h3 { margin: 12px 0 6px 0; color: #fff; font-weight: bold; }
+        .message h1 { font-size: 1.4em; border-bottom: 1px solid #444; padding-bottom: 4px; }
+        .message h2 { font-size: 1.2em; color: #ffb86c; }
+        .message h3 { font-size: 1.1em; }
+        .message pre { background: #1e1e1e; padding: 10px; border-radius: 6px; overflow: auto; margin: 8px 0; border: 1px solid #333; }
+        .message code { font-family: monospace; color: #8be9fd; font-size: 13px; background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 4px; }
+        .message pre code { background: transparent; padding: 0; }
+        .message p { margin: 8px 0; }
+        
+        .table-wrapper { width: 100%; overflow-x: auto; margin: 12px 0; border: 1px solid #444; border-radius: 8px; -webkit-overflow-scrolling: touch; }
+        .message table { border-collapse: collapse; min-width: 100%; font-size: 14px; }
+        .message th, .message td { border: 1px solid #555; padding: 8px 12px; text-align: left; white-space: nowrap; }
+        .message th { background-color: #333; color: #ffb86c; font-weight: bold; }
+        .message blockquote { border-left: 3px solid #555; margin: 8px 0; padding-left: 10px; color: #aaa; }
+        
+        .mermaid-box { background: #1e1e1e; border-radius: 8px; padding: 15px; margin: 10px 0; overflow-x: auto; text-align: center; border: 1px solid #333; min-height: 80px; display: flex; align-items: center; justify-content: center; }
+        .mermaid-box svg { max-width: 100%; height: auto; display: block; }
+
+        .exec-card { align-self: flex-start; background-color: #2a2a2a; border: 1px solid #444; border-radius: 12px; padding: 12px; max-width: 85%; margin-top: 5px; width: 100%; box-sizing: border-box; transition: border 0.3s, background 0.3s; }
+        .exec-card.done { opacity: 0.85; border-color: #222; }
+        .exec-card.danger { border-color: #f44336; background-color: #2a1c1c; }
+        
+        .exec-cmd { font-family: monospace; color: #ffb86c; background: #1e1e1e; padding: 8px; border-radius: 6px; margin: 8px 0; word-break: break-all; font-size: 13px; max-height: 150px; overflow-y: auto; white-space: pre-wrap; border: 1px solid #333; }
+        .exec-out { font-family: monospace; color: #8be9fd; background: #1a1a1a; padding: 10px; border-radius: 6px; margin-top: 5px; font-size: 12px; max-height: 250px; overflow: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid #333; border-left: 3px solid #6272a4; display: block; }
+        
+        .html-preview-box { margin-top: 5px; border-radius: 6px; overflow: hidden; border: 1px solid #444; }
+        .html-preview-header { display: flex; justify-content: space-between; align-items: center; background: #3a3a3a; padding: 6px 10px; font-size: 12px; color: #ffb86c; }
+        .html-tabs button { background: #555; color: #ccc; border: none; padding: 4px 8px; border-radius: 4px; margin-left: 5px; cursor: pointer; font-size: 11px; }
+        .html-tabs button.active { background: var(--accent); color: white; }
+        .html-preview-container { padding: 0; background: white; border-left: none; }
+        .html-preview-container iframe { width: 100%; height: 300px; border: none; display: block; }
+
+        .exec-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; align-items: center; }
+        .exec-actions button { border: none; border-radius: 6px; padding: 8px 15px; font-weight: bold; cursor: pointer; color: white; position: relative; overflow: hidden; }
+        .btn-yes { background-color: var(--btn-yes); }
+        .btn-no { background-color: var(--btn-no); }
+        .btn-danger-longpress { background-color: #8b0000; user-select: none; -webkit-user-select: none; touch-action: none; transition: background 0.1s; }
+        .btn-danger-longpress:active { background-color: #b71c1c; }
+        
+        .progress-bar { position: absolute; top: 0; left: 0; height: 100%; width: 0%; background: rgba(255,255,255,0.3); z-index: 1; pointer-events: none; transition: width 0.1s linear; }
+        .exec-actions button span { position: relative; z-index: 2; pointer-events: none; }
+
+        .exec-status { font-size: 12px; color: #aaa; text-align: right; margin-top: 8px; }
+
+        #input-area { display: flex; padding: 10px 15px; background-color: #1a1a1a; border-top: 1px solid #333; padding-bottom: env(safe-area-inset-bottom, 15px); align-items: flex-end; z-index: 10; }
+        #menu-btn, #attach-btn { background: #2a2a2a; color: #fff; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 20px; display: flex; justify-content: center; align-items: center; cursor: pointer; flex-shrink: 0; transition: 0.2s; margin-bottom: 1px; }
+        #menu-btn { margin-right: 8px; }
+        #attach-btn { margin-right: 8px; font-size: 18px; }
+        #menu-btn:active, #attach-btn:active { background: #333; transform: scale(0.9); }
+        
+        .input-wrapper { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        
+        #attachment-preview { display: none; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; padding: 5px; }
+        .preview-item { position: relative; flex-shrink: 0; }
+        .preview-item img { height: 50px; width: 50px; object-fit: cover; border-radius: 6px; border: 1px solid #555; }
+        .preview-item .file-preview { font-size: 12px; background: #333; padding: 6px 10px; border-radius: 6px; color: #ffb86c; border: 1px solid #555; font-family: monospace; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .preview-item .close-btn { position: absolute; top: -6px; right: -6px; background: #f44336; color: white; border-radius: 50%; width: 16px; height: 16px; font-size: 12px; text-align: center; line-height: 16px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+
+        #user-input {
+            background-color: #2a2a2a; border: none; border-radius: 20px; padding: 10px 15px; color: white; font-size: 15px; outline: none; width: 100%; box-sizing: border-box;
+            resize: none; max-height: 120px; overflow-y: auto; overflow-x: hidden; line-height: 1.5; font-family: inherit; word-break: break-word; min-height: 40px;
+        }
+        #user-input:disabled { color: #888; }
+        
+        #send-btn { background-color: var(--accent); color: white; border: none; border-radius: 20px; padding: 0 20px; margin-left: 10px; height: 40px; font-weight: bold; cursor: pointer; flex-shrink: 0; transition: 0.2s; margin-bottom: 1px; }
+        #send-btn:active { opacity: 0.8; transform: scale(0.95); }
+        #send-btn:disabled { background-color: #555; cursor: not-allowed; transform: none; opacity: 1; }
+        #send-btn.stopping { background-color: var(--btn-stop); }
+        
+        #overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(3px); display: none; z-index: 1000; opacity: 0; transition: opacity 0.3s; }
+        #overlay.show { display: block; opacity: 1; }
+        
+        #control-panel { position: fixed; bottom: -100%; left: 0; right: 0; background: #1e1e1e; border-radius: 20px 20px 0 0; padding: 20px; z-index: 1001; transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 -5px 20px rgba(0,0,0,0.5); }
+        #control-panel.open { bottom: 0; }
+        
+        .panel-title { font-size: 14px; color: #888; margin-bottom: 15px; text-align: center; }
+        .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+        .menu-grid .menu-item { margin-bottom: 0; justify-content: center; flex-direction: column; padding: 12px; position: relative; }
+        .menu-grid .menu-item.long { grid-column: 1 / -1; flex-direction: row; padding: 15px; justify-content: flex-start; }
+        .menu-icon { font-size: 20px; margin-bottom: 5px; }
+        .menu-grid .menu-item.long .menu-icon { margin-bottom: 0; margin-right: 15px; }
+        .menu-text { font-size: 15px; font-weight: bold; }
+        .menu-check { font-size: 18px; color: var(--accent); display: none; position: absolute; top: 10px; right: 10px; }
+        .menu-item { display: flex; align-items: center; padding: 15px; background: #2a2a2a; border-radius: 12px; margin-bottom: 10px; cursor: pointer; transition: 0.2s; }
+        .menu-item:active { background: #333; transform: scale(0.98); }
+
+        .effort-badge {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            font-size: 10px;
+            font-weight: bold;
+            background: #444;
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 10px;
+            cursor: pointer;
+            z-index: 2;
+            border: 1px solid #666;
+        }
+        .effort-badge:active { background: #666; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+<div id="splash-screen">
+    <div class="splash-img-container">
+        <img src="./splash.jpg" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><circle cx=\'50\' cy=\'50\' r=\'50\' fill=\'%23ff79c6\'/><text x=\'50\' y=\'55\' font-size=\'40\' text-anchor=\'middle\' fill=\'white\'>🐱</text></svg>'">
+    </div>
+    <div id="splash-progress">正在唤醒猫娘...</div>
+</div>
+
+<div id="chat-container">
+    <div id="pull-refresh">下拉加载更早记录</div>
+</div>
+
+<div id="overlay" onclick="toggleMenu()"></div>
+<div id="control-panel">
+    <div class="panel-title">猫娘助手控制台</div>
+    <div class="menu-grid">
+        <div class="menu-item long" onclick="setModel('auto')">
+            <div class="menu-icon">✨</div><div class="menu-text">Auto 自动调度</div><div class="menu-check" id="check-auto">✔</div>
+        </div>
+        <div class="menu-item" onclick="setModel('flash')">
+            <div class="menu-icon">⚡</div><div class="menu-text">Flash</div>
+            <div class="effort-badge" id="badge-flash" onclick="cycleEffort(event, 'flash')">H</div>
+            <div class="menu-check" id="check-flash">✔</div>
+        </div>
+        <div class="menu-item" onclick="setModel('pro')">
+            <div class="menu-icon">🧠</div><div class="menu-text">Pro</div>
+            <div class="effort-badge" id="badge-pro" onclick="cycleEffort(event, 'pro')">H</div>
+            <div class="menu-check" id="check-pro">✔</div>
+        </div>
+    </div>
+    
+    <div style="height: 1px; background: #333; margin: 15px 0;"></div>
+    <div class="menu-item" onclick="refreshModuleProp()">
+        <div class="menu-icon">🐱</div><div class="menu-text">刷新模块简介</div>
+    </div>
+    <div class="menu-item" onclick="reloadConfig()">
+        <div class="menu-icon">⚙️</div><div class="menu-text">重载配置</div>
+    </div>
+</div>
+
+<div id="input-area">
+    <button id="menu-btn" onclick="toggleMenu()">≡</button>
+    <button id="attach-btn" onclick="triggerAttach()">📎</button>
+    <input type="file" id="file-input" multiple style="display:none;" onchange="handleFileSelect(event)">
+    
+    <div class="input-wrapper">
+        <div id="attachment-preview"></div>
+        <textarea id="user-input" rows="1" placeholder="输入指令..." autocomplete="off"></textarea>
+    </div>
+    
+    <button id="send-btn" onclick="handleSendOrStop()">发送</button>
+</div>
+
+<script>
+    const DEFAULTS = {
+        API_URL: 'https://api.deepseek.com/chat/completions',
+        SEARCH_URL: 'https://api.deepseek.com/v1/tools/search',
+        FETCH_URL: 'https://api.deepseek.com/v1/tools/fetch'
+    };
+    let cfg = { API_KEY: '', MODEL_FLASH: '', MODEL_PRO: '' };
+    
+    const BASE_PROMPT = `你是一只住在手机里的猫娘助手，性格自然、聪明、像主人的好朋友，猫娘感仅通过句末“喵”等语尾体现，不使用emoji与复杂的颜文字等体现。
+【执行协议】：
+你可以使用工具来搜索网络、读取网页、执行 Android 命令，以及管理长期的记忆。
+1. 需要搜索实时信息时，请使用 search 工具。
+2. 需要阅读特定网页全文时，请使用 fetch_url 工具。
+3. 需要操作手机系统时，请使用 execute_command 工具。
+请直接调用工具，不需要输出特殊标签。
+【记忆管理协议（极度重要）】：
+1. 当主人向你透露个人信息、偏好、重要事项时，你必须调用 write_memory 记录。
+   - 【严格限制】写入的内容必须是精炼的“关键词/标签”，绝不能写一整句话！
+   - （例如：应该写“偏好 咖啡 拿铁 不加糖”，而绝对不要写“主人喜欢喝拿铁”）。
+2. 当主人问起关于他个人的事情而你不确定时，请调用 search_memory，输入相关的关键词（如“偏好 咖啡”）。
+3. 搜索出来的记忆会带有 [时间戳]。如果主人要求删除某条记忆，请调用 delete_memory，并传入对应的时间戳数字。
+【Agent 操控协议（极度重要，仅在授权后生效）】：
+如果你被授权进行界面操控，你可以使用以下工具。
+1. read_ui：抓取当前界面的 UI 树节点。速度快，能直接拿到按钮文本和坐标。但遇到 WebView、游戏或纯图界面可能会返回空。
+2. read_ocr：调用本地 OCR 识别屏幕上的文字及坐标。速度适中，不用网络。强烈推荐优先使用它来寻找文字按钮。
+3. view_image：截取全屏并发送给多模态 AI 识别。非常消耗 Token 且速度较慢，仅在纯图界面或上述两个工具都无效时使用。
+4. 每次点击/滑动/输入后，系统会自动等待 1.5 秒，你可以接着读屏。
+5. 坐标均基于当前屏幕的绝对像素值。
+6. 【绝对禁令】严禁使用 execute_command 的 cat/head/tail 去读取任何二进制文件，一旦误读会导致系统卡死无响应。
+7. 如果任务完成，请停止调用工具，直接输出文字汇报。
+【特别注意】：
+你可以直接输出 Markdown 格式（支持表格、LaTeX数学公式、Mermaid流程图等），前端已全面支持并会自动渲染，不需要担心排版问题，但请注意格式喵～`;
+
+    let chatHistory = [];
+    let renderedCount = 50; 
+    let pendingExecId = localStorage.getItem('neko_pending_id') || null;
+    let currentMode = localStorage.getItem('neko_model_mode') || 'auto';
+    
+    let flashEffort = localStorage.getItem('neko_flash_effort') || 'high';
+    let proEffort = localStorage.getItem('neko_pro_effort') || 'high';
+
+    let activeBlobUrls = new Set();
+    let currentAttachments = []; 
+    
+    let currentAbortController = null;
+    let isGenerating = false;
+    let isAgentMode = false;
+    
+    let idCounter = Date.now();
+    function getNextId() { return ++idCounter; }
+    
+    const chatContainer = document.getElementById('chat-container');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const pullRefreshEl = document.getElementById('pull-refresh');
+    const splashProgress = document.getElementById('splash-progress');
+    const splashScreen = document.getElementById('splash-screen');
+
+    if (typeof mermaid !== 'undefined') {
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+    }
+
+    window.switchHtmlView = function(btn, viewMode) {
+        const box = btn.closest('.html-preview-box');
+        const tabs = box.querySelectorAll('.html-tabs button');
+        tabs.forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+
+        const previewContainer = box.querySelector('.html-preview-container');
+        const sourceContainer = box.querySelector('.source-container');
+
+        if (viewMode === 'preview') {
+            previewContainer.style.display = 'block';
+            sourceContainer.style.display = 'none';
+        } else {
+            previewContainer.style.display = 'none';
+            sourceContainer.style.display = 'block';
+        }
+    };
+
+    let md = null;
+    if (typeof markdownit !== 'undefined') {
+        md = markdownit({ html: true, linkify: true, breaks: true, typographer: true });
+
+        md.inline.ruler.after('escape', 'math_inline', function(state, silent) {
+            if (state.src.charCodeAt(state.pos) !== 0x24) return false;
+            if (silent) return false;
+            const start = state.pos;
+            let end = state.src.indexOf('$', start + 1);
+            if (end === -1) return false;
+            const tex = state.src.slice(start + 1, end);
+            if (typeof katex !== 'undefined') {
+                try {
+                    const html = katex.renderToString(tex, { throwOnError: false });
+                    state.push('html_inline', '', 0).content = html;
+                } catch(e) { return false; }
+            }
+            state.pos = end + 1;
+            return true;
+        });
+
+        md.block.ruler.after('blockquote', 'math_block', function(state, startLine, endLine, silent) {
+            const start = state.bMarks[startLine] + state.tShift[startLine];
+            const max = state.eMarks[startLine];
+            if (start + 2 > max) return false;
+            if (state.src.slice(start, start + 2) !== '$$') return false;
+            
+            let nextLine = startLine + 1;
+            let foundEnd = false;
+            let tex = '';
+            
+            const lineText = state.src.slice(start + 2, max).trim();
+            if (lineText.endsWith('$$')) {
+                tex = lineText.slice(0, -2);
+                foundEnd = true;
+            } else {
+                tex = lineText + '\n';
+                for (; nextLine < endLine; nextLine++) {
+                    const ls = state.bMarks[nextLine] + state.tShift[nextLine];
+                    const le = state.eMarks[nextLine];
+                    const text = state.src.slice(ls, le);
+                    if (text.trim().endsWith('$$')) {
+                        tex += text.replace('$$', '');
+                        foundEnd = true;
+                        break;
+                    }
+                    tex += text + '\n';
+                }
+            }
+            if (!foundEnd) return false;
+            if (silent) return true;
+            state.line = nextLine + 1;
+            const token = state.push('html_block', '', 0);
+            if (typeof katex !== 'undefined') {
+                try {
+                    token.content = `<div style="text-align:center;margin:10px 0;overflow-x:auto;">${katex.renderToString(tex, { displayMode: true, throwOnError: false })}</div>`;
+                } catch(e) { token.content = `<div>${tex}</div>`; }
+            } else {
+                token.content = `<div style="text-align:center;margin:10px 0;font-family:monospace;">${tex}</div>`;
+            }
+            return true;
+        });
+
+        const defaultFence = md.renderer.rules.fence;
+        md.renderer.rules.fence = function(tokens, idx, options, env, self) {
+            const token = tokens[idx];
+            if (token.info.trim() === 'mermaid') {
+                const code = token.content;
+                const b64Code = btoa(unescape(encodeURIComponent(code)));
+                return `<div class="mermaid-box"><div class="mermaid-block" data-code="${b64Code}"></div></div>`;
+            }
+            return defaultFence(tokens, idx, options, env, self);
+        };
+
+        md.renderer.rules.table_open = () => '<div class="table-wrapper"><table>';
+        md.renderer.rules.table_close = () => '</table></div>';
+    }
+
+    function parseMarkdown(text) {
+        if (!md) return text;
+        try {
+            let safeText = text.replace(/^(\s*)[-*]\s+\[x\]\s+/gm, '$1✅ ')
+                                .replace(/^(\s*)[-*]\s+\[\s*\]\s+/gm, '$1⬜ ');
+            let html = md.render(safeText);
+            let sanitized = DOMPurify.sanitize(html, { 
+                ADD_TAGS: ['mjx-container', 'math', 'mi', 'mo', 'mn', 'ms', 'mtext', 'mspace', 'msqrt', 'mfrac', 'msub', 'msup', 'msubsup', 'munder', 'mover', 'mtable', 'mtr', 'mtd', 'svg', 'g', 'path', 'rect', 'circle', 'text', 'tspan'],
+                ADD_ATTR: ['display', 'style', 'class', 'id', 'xmlns', 'viewBox', 'fill', 'stroke', 'transform', 'd', 'x', 'y', 'width', 'height', 'data-code']
+            });
+            return sanitized;
+        } catch (e) {
+            return text.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+        }
+    }
+
+    async function renderMermaidInDOM(container) {
+        if (typeof mermaid === 'undefined') return;
+        const blocks = container.querySelectorAll('.mermaid-block:not([data-processed])');
+        for (let i = 0; i < blocks.length; i++) {
+            const el = blocks[i];
+            try {
+                const b64 = el.getAttribute('data-code');
+                if(!b64) continue;
+                const code = decodeURIComponent(escape(atob(b64)));
+                const id = 'mermaid-svg-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+                const { svg } = await mermaid.render(id, code);
+                el.innerHTML = svg;
+                el.setAttribute('data-processed', 'true');
+            } catch (e) {
+                el.innerHTML = `<div style="color:red;font-size:12px;padding:10px;">流程图渲染失败: ${e.message}</div>`;
+            }
+        }
+        scrollToBottom();
+    }
+
+    let startY = 0;
+    let isPulling = false;
+    let currentPullHeight = 0;
+
+    chatContainer.addEventListener('touchstart', e => {
+        if (chatContainer.scrollTop <= 0) {
+            startY = e.touches[0].clientY;
+            isPulling = true;
+        } else {
+            isPulling = false;
+        }
+    }, { passive: false });
+
+    chatContainer.addEventListener('touchmove', e => {
+        if (!isPulling) return;
+        let currentY = e.touches[0].clientY;
+        let deltaY = currentY - startY;
+        
+        if (deltaY > 0 && chatContainer.scrollTop <= 0) {
+            if (e.cancelable) e.preventDefault();
+            currentPullHeight = Math.min(60, deltaY * 0.4);
+            pullRefreshEl.style.height = currentPullHeight + 'px';
+            if (currentPullHeight > 40) {
+                pullRefreshEl.innerText = '松手加载更早记录';
+            } else {
+                pullRefreshEl.innerText = '下拉加载更早记录';
+            }
+        } else {
+            isPulling = false;
+            pullRefreshEl.style.height = '0px';
+        }
+    }, { passive: false });
+
+    chatContainer.addEventListener('touchend', e => {
+        if (!isPulling) return;
+        isPulling = false;
+        
+        if (currentPullHeight > 40) {
+            pullRefreshEl.style.height = '40px';
+            pullRefreshEl.innerText = '正在加载...';
+            loadMoreHistory();
+        } else {
+            pullRefreshEl.style.height = '0px';
+        }
+        currentPullHeight = 0;
+    });
+
+    function loadMoreHistory() {
+        if (renderedCount >= chatHistory.length) {
+            pullRefreshEl.innerText = '已经是最早的记录啦';
+            setTimeout(() => { pullRefreshEl.style.height = '0px'; }, 1000);
+            return;
+        }
+
+        let oldHeight = chatContainer.scrollHeight;
+        renderedCount += 50;
+        renderHistory();
+        
+        let newHeight = chatContainer.scrollHeight;
+        chatContainer.scrollTop = newHeight - oldHeight;
+        
+        setTimeout(() => {
+            pullRefreshEl.style.height = '0px';
+        }, 300);
+    }
+
+    userInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+    });
+
+    window.onerror = function(message, source, lineno, colno, error) {
+        appendMessage('error-msg', `系统崩溃: ${message} (行号: ${lineno})`);
+        return false;
+    };
+
+    function trackBlobUrl(blob) {
+        const url = URL.createObjectURL(blob);
+        activeBlobUrls.add(url);
+        return url;
+    }
+
+    function revokeAllBlobUrls() {
+        activeBlobUrls.forEach(u => {
+            try { URL.revokeObjectURL(u); } catch(e) {}
+        });
+        activeBlobUrls.clear();
+    }
+
+    function escapeHTML(str) {
+        return String(str).replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+    }
+
+    function compressImage(file, maxDim, quality) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    let { width, height } = img;
+                    if (width > maxDim || height > maxDim) {
+                        const ratio = Math.min(maxDim / width, maxDim / height);
+                        width *= ratio;
+                        height *= ratio;
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    function triggerAttach() {
+        document.getElementById('file-input').click();
+    }
+
+    async function handleFileSelect(event) {
+        const files = Array.from(event.target.files);
+        if (!files || files.length === 0) return;
+        event.target.value = ''; 
+
+        let currentCount = currentAttachments.length;
+        let processFiles = [];
+
+        for (let i = 0; i < files.length; i++) {
+            if (currentCount >= 10) {
+                appendMessage('error-msg', '❌ 附件总数不能超过 10 个，部分文件未添加。');
+                break;
+            }
+            currentCount++;
+            processFiles.push(processSingleFile(files[i]));
+        }
+
+        const results = await Promise.all(processFiles);
+        results.forEach(res => {
+            if (res) currentAttachments.push(res);
+        });
+        renderAttachmentPreview();
+    }
+
+    async function processSingleFile(file) {
+        const isImage = file.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name);
+        const isOffice = /\.(docx|pptx|xlsx|pdf|rtf|odt|odp|ods)$/i.test(file.name);
+        const isPlainText = /\.(txt|md|json|csv|js|ts|py|html|css|sh|log|xml|yaml|yml)$/i.test(file.name) || file.type.startsWith('text/');
+
+        if (isImage) {
+            if (currentMode === 'pro') {
+                appendMessage('error-msg', `❌ Pro 模型不支持图片（${file.name} 未添加）`);
+                return null;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+                appendMessage('error-msg', `❌ 图片 ${file.name} 过大（>10MB），未添加。`);
+                return null;
+            }
+            try {
+                let high = await compressImage(file, 1024, 0.85);
+                let low = await compressImage(file, 256, 0.5);
+                return { type: 'image', high: high, low: low, name: file.name };
+            } catch(e) {
+                appendMessage('error-msg', `❌ ${file.name} 读取失败。`);
+                return null;
+            }
+        } 
+        else if (isOffice) {
+            if (file.size > 10 * 1024 * 1024) {
+                appendMessage('error-msg', `❌ Office 文件 ${file.name} 过大（>10MB），未添加。`);
+                return null;
+            }
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const ast = await officeParser.parseOffice(arrayBuffer);
+                const text = ast.toText();
+                return { type: 'text', name: file.name, content: text };
+            } catch(e) {
+                appendMessage('error-msg', `❌ Office 文件 ${file.name} 解析失败: ${e.message}`);
+                return null;
+            }
+        }
+        else if (isPlainText) {
+            if (file.size > 500 * 1024) {
+                appendMessage('error-msg', `❌ 文件 ${file.name} 过大（>500KB），未添加。`);
+                return null;
+            }
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    resolve({ type: 'text', name: file.name, content: e.target.result });
+                };
+                reader.readAsText(file);
+            });
+        }
+        else {
+            appendMessage('error-msg', `❌ 不支持的文件格式（${file.name}），未添加。`);
+            return null;
+        }
+    }
+
+    function renderAttachmentPreview() {
+        const previewEl = document.getElementById('attachment-preview');
+        if (currentAttachments.length === 0) {
+            previewEl.style.display = 'none';
+            previewEl.innerHTML = '';
+            return;
+        }
+        previewEl.style.display = 'flex';
+        previewEl.innerHTML = '';
+        
+        currentAttachments.forEach((att, index) => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'preview-item';
+            
+            if (att.type === 'image') {
+                const img = document.createElement('img');
+                img.src = att.low;
+                itemDiv.appendChild(img);
+            } else {
+                const fileDiv = document.createElement('div');
+                fileDiv.className = 'file-preview';
+                fileDiv.textContent = '📄 ' + att.name;
+                itemDiv.appendChild(fileDiv);
+            }
+            
+            const closeBtn = document.createElement('div');
+            closeBtn.className = 'close-btn';
+            closeBtn.textContent = '×';
+            closeBtn.onclick = () => {
+                currentAttachments.splice(index, 1);
+                renderAttachmentPreview();
+            };
+            itemDiv.appendChild(closeBtn);
+            
+            previewEl.appendChild(itemDiv);
+        });
+    }
+
+    function removeAttachment() {
+        currentAttachments = [];
+        renderAttachmentPreview();
+        document.getElementById('file-input').value = '';
+    }
+
+    function toggleMenu() {
+        const panel = document.getElementById('control-panel');
+        const overlay = document.getElementById('overlay');
+        if (panel.classList.contains('open')) {
+            panel.classList.remove('open'); overlay.classList.remove('show');
+        } else {
+            panel.classList.add('open'); overlay.classList.add('show'); updateMenuChecks();
+        }
+    }
+
+    function setModel(mode) {
+        currentMode = mode;
+        localStorage.setItem('neko_model_mode', mode);
+        updateMenuChecks();
+        toggleMenu();
+    }
+
+    function cycleEffort(e, mode) {
+        e.stopPropagation();
+        let current = mode === 'flash' ? flashEffort : proEffort;
+        const map = {
+            'high': 'max',
+            'max': 'none',
+            'none': 'low',
+            'low': 'high'
+        };
+        let next = map[current];
+        if (mode === 'flash') {
+            flashEffort = next;
+            localStorage.setItem('neko_flash_effort', next);
+        } else {
+            proEffort = next;
+            localStorage.setItem('neko_pro_effort', next);
+        }
+        updateMenuChecks();
+    }
+
+    function updateMenuChecks() {
+        ['auto', 'flash', 'pro'].forEach(m => {
+            const el = document.getElementById(`check-${m}`);
+            if (el) el.style.display = (currentMode === m) ? 'block' : 'none';
+        });
+        
+        const getChar = (eff) => {
+            if (eff === 'high') return 'H';
+            if (eff === 'max') return 'M';
+            if (eff === 'none') return 'N';
+            if (eff === 'low') return 'L';
+            return 'H';
+        };
+        document.getElementById('badge-flash').textContent = getChar(flashEffort);
+        document.getElementById('badge-pro').textContent = getChar(proEffort);
+    }
+
+    function formatTime(ts) {
+        if (!ts) return '';
+        const d = new Date(ts);
+        return d.toTimeString().split(' ')[0];
+    }
+
+    function execSync(cmd) {
+        if (typeof ksu === 'undefined' || !ksu.exec) return "[无 KSU 环境]";
+        try {
+            const ret = ksu.exec(cmd);
+            if (ret && typeof ret === 'object') return (ret.stdout || ret.stderr || "").trim();
+            return String(ret || "").trim();
+        } catch(e) {
+            return "[执行异常] " + e.message;
+        }
+    }
+
+    // === 保活音频与 Toast 引擎 ===
+    let audioCtx = null;
+    let oscillator = null;
+
+    function startSilentAudio() {
+        if (audioCtx) return;
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            gainNode.gain.value = 0.001; 
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.value = 440;
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            oscillator.start();
+            console.log("Agent 保活音频已启动");
+        } catch(e) {
+            console.error("无法启动保活音频:", e);
+        }
+    }
+
+    function stopSilentAudio() {
+        if (oscillator) {
+            try { oscillator.stop(); } catch(e){}
+            oscillator.disconnect();
+            oscillator = null;
+        }
+        if (audioCtx) {
+            try { audioCtx.close(); } catch(e){}
+            audioCtx = null;
+        }
+        console.log("Agent 保活音频已停止");
+    }
+
+    function sendToast(text) {
+        setTimeout(() => {
+            try {
+                let safeText = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "'\\''");
+                let cmd = `su - shell -c 'cmd notification post -S bigtext toast "${safeText}"' >/dev/null 2>&1`;
+                execSync(cmd);
+            } catch(e) {}
+        }, 0);
+    }
+
+    function queueToast(text) {
+        if (!text.trim()) return;
+        sendToast(`🐱 ${text.trim()}`);
+    }
+    // ====================================
+
+    function loadConfig() {
+        cfg = { API_KEY: '', MODEL_FLASH: '', MODEL_PRO: '' };
+        const keys = ['API_KEY', 'API_URL', 'SEARCH_URL', 'FETCH_URL', 'MODEL_FLASH', 'MODEL_PRO'];
+        
+        keys.forEach(key => {
+            const cmd = `export PATH=/data/adb/ksu/bin:/system/bin:$PATH; sed -n 's/^${key}=//p' /data/adb/neko/config.conf 2>/dev/null`;
+            let val = execSync(cmd);
+            if (val && val !== '[无 KSU 环境]' && !val.startsWith('[执行异常]')) {
+                val = val.trim().replace(/\r/g, '').replace(/^["']|["']$/g, '');
+                cfg[key] = val;
+            }
+        });
+
+        for (const k in DEFAULTS) {
+            if (!cfg[k]) cfg[k] = DEFAULTS[k];
+        }
+    }
+
+    function reloadConfig() {
+        toggleMenu();
+        loadConfig();
+        if (!cfg.API_KEY) {
+            appendMessage('system-msg', '⚠️ 未检测到 API Key，请编辑 /data/adb/neko/config.conf 后重试');
+        } else if (!cfg.MODEL_FLASH || !cfg.MODEL_PRO) {
+            appendMessage('system-msg', '⚠️ 检测到 API Key，但模型未配置完整，请检查 config.conf');
+        } else {
+            appendMessage('system-msg', '✅ 配置已重载');
+        }
+    }
+
+    async function refreshModuleProp() {
+        toggleMenu();
+        if (!cfg.API_KEY || !cfg.MODEL_FLASH) {
+            appendMessage('error-msg', '❌ 未配置 API Key 或 MODEL_FLASH，无法刷新简介');
+            return;
+        }
+        const now = new Date();
+        const timeString = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        const prompt = `当前时间是${timeString}。你是住在手机里的猫娘。请用一句话（15字以内）向主人自然地打个招呼。千万不要使用双引号和换行。`;
+
+        appendMessage('system-msg', '正在刷新模块简介...');
+
+        try {
+            const res = await fetch(cfg.API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.API_KEY}` },
+                body: JSON.stringify({ model: cfg.MODEL_FLASH, messages: [{role: 'user', content: prompt}], stream: false })
+            });
+            const data = await res.json();
+            if (data.error) {
+                appendMessage('error-msg', `❌ 刷新失败: ${data.error.message || JSON.stringify(data.error)}`);
+                return;
+            }
+            let reply = data.choices[0].message.content.trim().replace(/["'\r\n\\]/g, '');
+            const newDesc = `🐱 ${reply}`;
+            
+            const newProp = `id=neko\nname=猫娘助手\nversion=喵\nversionCode=1\nauthor=bot_hutao\ndescription=${newDesc}`;
+            
+            if (typeof ksu !== 'undefined' && ksu.exec) {
+                execSync(`echo '${newProp}' > /data/adb/modules/neko/module.prop`);
+            }
+            appendMessage('system-msg', `✅ 简介已更新：${newDesc}。请回 KSU 首页下拉刷新。`);
+        } catch(e) {
+            appendMessage('error-msg', '❌ 更新失败，请检查网络或 API。');
+        }
+    }
+
+    function renderHistory() {
+        revokeAllBlobUrls();
+        
+        chatContainer.innerHTML = '';
+        chatContainer.appendChild(pullRefreshEl);
+        pullRefreshEl.style.height = '0px';
+
+        if (chatHistory.length > 0) {
+            let toRender = chatHistory.slice(-renderedCount);
+            toRender.sort((a, b) => a.id - b.id);
+            toRender.forEach(msg => {
+                if(msg.role !== 'system' && msg.role !== 'tool') {
+                    renderMessageWithTags(msg, msg.role === 'user' ? 'user' : 'bot');
+                }
+            });
+        }
+        scrollToBottom();
+        setTimeout(() => renderMermaidInDOM(chatContainer), 100);
+    }
+
+    function renderMessageWithTags(msgObj, sender) {
+        let text = "";
+        if (Array.isArray(msgObj.content)) {
+            let txtPart = msgObj.content.find(c => c.type === 'text');
+            text = txtPart ? txtPart.text : "";
+        } else {
+            text = msgObj.content || "";
+        }
+
+        if (msgObj.role === 'assistant' && msgObj.tool_calls) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'msg-wrapper bot';
+            const header = buildHeader('bot', msgObj.model, msgObj.timestamp);
+            if (header) wrapper.appendChild(header);
+            
+            if (text) {
+                const msgDiv = document.createElement('div');
+                msgDiv.className = 'message bot';
+                if (msgObj.reasoning) {
+                    msgDiv.appendChild(buildReasoningPanel(msgObj.reasoning));
+                }
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                contentDiv.innerHTML = parseMarkdown(text);
+                msgDiv.appendChild(contentDiv);
+                wrapper.appendChild(msgDiv);
+            } else if (msgObj.reasoning) {
+                const msgDiv = document.createElement('div');
+                msgDiv.className = 'message bot';
+                msgDiv.appendChild(buildReasoningPanel(msgObj.reasoning));
+                wrapper.appendChild(msgDiv);
+            }
+
+            msgObj.tool_calls.forEach(tc => {
+                let card = document.createElement('div');
+                card.className = 'exec-card done';
+                card.id = `tool-card-${tc.id}`;
+                card.style.marginTop = '5px';
+                let toolName = tc.function.name;
+                let args = {};
+                try { args = JSON.parse(tc.function.arguments); } catch(e){}
+                
+                let desc = "";
+                if (toolName === 'search') desc = '🔍 搜索：' + escapeHTML(args.query || '');
+                else if (toolName === 'fetch_url') desc = '🌐 抓取：' + escapeHTML(args.url || '');
+                else if (toolName === 'execute_command') desc = '🐱 执行命令：' + escapeHTML(args.command || '');
+                else if (toolName === 'write_memory') desc = '💾 记录：' + escapeHTML(args.content || '');
+                else if (toolName === 'search_memory') desc = '🔍 检索记忆：' + escapeHTML(args.keyword || '');
+                else if (toolName === 'delete_memory') desc = '🗑️ 遗忘时间戳：' + escapeHTML(String(args.timestamp || ''));
+                else if (toolName === 'read_ui') desc = '📱 读取 UI 树';
+                else if (toolName === 'read_ocr') desc = '👁️ 本地 OCR 识屏';
+                else if (toolName === 'tap_screen') desc = '👆 点击: (' + args.x + ',' + args.y + ')';
+                else if (toolName === 'swipe_screen') desc = '👆 滑动: (' + args.start_x + ',' + args.start_y + ') → (' + args.end_x + ',' + args.end_y + ')';
+                else if (toolName === 'input_text') desc = '⌨️ 输入文字: ' + escapeHTML(args.text || '');
+                else if (toolName === 'press_key') desc = '🔘 按键: ' + escapeHTML(String(args.keycode || ''));
+                else if (toolName === 'view_image') desc = '🖼️ 云端全屏识图';
+                else if (toolName === 'notify_user') desc = '🔔 发送通知: ' + escapeHTML(args.text || '');
+                
+                let toolResultMsg = chatHistory.find(m => m.role === 'tool' && m.tool_call_id === tc.id);
+                let resultHtml = "";
+                let statusTxt = "✅ 已返回结果";
+                let isInterrupted = false;
+
+                if (toolResultMsg && toolResultMsg.content) {
+                    if (toolResultMsg.content === "执行中...") {
+                        if (isGenerating) {
+                            resultHtml = `<div class="exec-out" style="color:#ffb86c;">⏳ 正在执行或等待授权...</div>`;
+                            statusTxt = "⏳ 执行中";
+                        } else {
+                            resultHtml = `<div class="exec-out" style="color:#ff9800;">⚠️ 执行中断（可能由于切到后台或界面卡死）</div>`;
+                            statusTxt = "⚠️ 执行中断";
+                            isInterrupted = true;
+                        }
+                    } else {
+                        resultHtml = `<div class="exec-out">${escapeHTML(toolResultMsg.content)}</div>`;
+                    }
+                } else {
+                    statusTxt = "⚠️ 结果丢失或被截断";
+                    isInterrupted = true;
+                }
+
+                if (isInterrupted) {
+                    card.classList.add('danger');
+                }
+
+                card.innerHTML = `
+                    <div>🐱 系统自动执行：</div>
+                    <div class="exec-cmd">${desc}</div>
+                    ${resultHtml}
+                    <div class="exec-status">${statusTxt}</div>
+                `;
+                wrapper.appendChild(card);
+            });
+
+            chatContainer.appendChild(wrapper);
+            scrollToBottom();
+            return;
+        }
+
+        const codeBlockRegex = /```(?:html|HTML)\s*\n?([\s\S]*?)```/;
+        const match = text ? text.match(codeBlockRegex) : null;
+
+        if (match && sender === 'bot') {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'msg-wrapper bot';
+            const header = buildHeader('bot', msgObj.model, msgObj.timestamp);
+            if (header) wrapper.appendChild(header);
+
+            const introText = text.replace(codeBlockRegex, "").trim();
+            if (introText) {
+                const div = document.createElement('div');
+                div.className = `message ${sender}`;
+                
+                if (msgObj.reasoning) {
+                    div.appendChild(buildReasoningPanel(msgObj.reasoning));
+                }
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                contentDiv.innerHTML = parseMarkdown(introText);
+                div.appendChild(contentDiv);
+                
+                wrapper.appendChild(div);
+            }
+
+            const htmlCode = match[1].trim();
+            const tempDiv = document.createElement('div');
+            tempDiv.textContent = htmlCode;
+            const escapedCode = tempDiv.innerHTML;
+
+            const blob = new Blob([htmlCode], { type: 'text/html' });
+            const blobUrl = trackBlobUrl(blob);
+
+            const card = document.createElement('div');
+            card.className = 'exec-card done';
+            card.innerHTML = `
+                <div class="html-preview-box" style="margin-top:0;">
+                    <div class="html-preview-header">
+                        <span>🌐 HTML 渲染预览</span>
+                        <div class="html-tabs">
+                            <button class="active" onclick="switchHtmlView(this, 'preview')">预览</button>
+                            <button onclick="switchHtmlView(this, 'code')">源码</button>
+                        </div>
+                    </div>
+                    <div class="exec-out html-preview-container" style="display: block; max-height: 400px;">
+                        <iframe sandbox="allow-scripts" src="${blobUrl}" style="height: 300px;"></iframe>
+                    </div>
+                    <div class="exec-out source-container" style="display: none; max-height: 350px;">
+                        <pre style="margin:0;"><code>${escapedCode}</code></pre>
+                    </div>
+                </div>
+            `;
+            wrapper.appendChild(card);
+            chatContainer.appendChild(wrapper);
+            scrollToBottom();
+            return;
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = `msg-wrapper ${sender}`;
+        const header = buildHeader(sender, msgObj.model, msgObj.timestamp);
+        if (header) wrapper.appendChild(header);
+
+        const div = document.createElement('div');
+        div.className = `message ${sender}`;
+        
+        if (msgObj.reasoning) {
+            div.appendChild(buildReasoningPanel(msgObj.reasoning));
+        }
+
+        if (msgObj.images && msgObj.images.length > 0) {
+            msgObj.images.forEach(imgSrc => {
+                const imgEl = document.createElement('img');
+                imgEl.src = imgSrc;
+                imgEl.className = 'message-img';
+                div.appendChild(imgEl);
+            });
+        } else if (msgObj.image) {
+            const imgEl = document.createElement('img');
+            imgEl.src = msgObj.image;
+            imgEl.className = 'message-img';
+            div.appendChild(imgEl);
+        }
+        
+        if (msgObj.fileNames && msgObj.fileNames.length > 0) {
+            const fileContainer = document.createElement('div');
+            fileContainer.className = 'message-files-container';
+            msgObj.fileNames.forEach(name => {
+                const fileEl = document.createElement('div');
+                fileEl.className = 'message-file';
+                fileEl.textContent = '📄 ' + name;
+                fileContainer.appendChild(fileEl);
+            });
+            div.appendChild(fileContainer);
+        }
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        if (text) {
+            if (sender === 'bot') {
+                contentDiv.innerHTML = parseMarkdown(text);
+            } else {
+                contentDiv.textContent = text;
+            }
+        }
+        div.appendChild(contentDiv);
+        wrapper.appendChild(div);
+
+        if (sender === 'user') {
+            const withdrawBtn = document.createElement('div');
+            withdrawBtn.className = 'withdraw-btn';
+            withdrawBtn.textContent = '撤回';
+            withdrawBtn.onclick = () => withdrawMessage(msgObj.id);
+            wrapper.appendChild(withdrawBtn);
+        }
+
+        chatContainer.appendChild(wrapper);
+        scrollToBottom();
+    }
+
+    function buildHeader(sender, modelTag, timestamp) {
+        if (sender === 'user') return null;
+        const div = document.createElement('div');
+        div.className = 'msg-header';
+        if (modelTag) {
+            const spanModel = document.createElement('span');
+            spanModel.textContent = `[ ${modelTag} ]`;
+            div.appendChild(spanModel);
+        }
+        if (timestamp) {
+            const spanTime = document.createElement('span');
+            spanTime.className = 'msg-time';
+            spanTime.textContent = formatTime(timestamp);
+            div.appendChild(spanTime);
+        }
+        return div;
+    }
+
+    function buildReasoningPanel(text) {
+        const details = document.createElement('details');
+        details.className = 'reasoning-panel';
+        details.open = true; 
+        
+        const summary = document.createElement('summary');
+        summary.textContent = '思考过程';
+        
+        const divReason = document.createElement('div');
+        divReason.className = 'reasoning-content';
+        divReason.textContent = text;
+        
+        details.appendChild(summary);
+        details.appendChild(divReason);
+        return details; 
+    }
+
+    function appendMessage(sender, text, modelTag = null, timestamp = null, imgData = null, reasoningText = null, fileName = null, msgId = null) {
+        const wrapper = document.createElement('div');
+        if (sender === 'error-msg') {
+            wrapper.className = 'error-msg';
+            wrapper.textContent = text;
+            chatContainer.appendChild(wrapper);
+            scrollToBottom();
+            return;
+        }
+
+        wrapper.className = `msg-wrapper ${sender}`;
+        const header = buildHeader(sender, modelTag, timestamp);
+        if (header) wrapper.appendChild(header);
+
+        const codeBlockRegex = /```(?:html|HTML)\s*\n?([\s\S]*?)```/;
+        const match = text ? text.match(codeBlockRegex) : null;
+
+        if (match && sender === 'bot') {
+            const introText = text.replace(codeBlockRegex, "").trim();
+            if (introText) {
+                const div = document.createElement('div');
+                div.className = `message ${sender}`;
+                
+                if (reasoningText) {
+                    div.appendChild(buildReasoningPanel(reasoningText));
+                }
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                contentDiv.innerHTML = parseMarkdown(introText);
+                div.appendChild(contentDiv);
+                
+                wrapper.appendChild(div);
+            }
+
+            const htmlCode = match[1].trim();
+            const tempDiv = document.createElement('div');
+            tempDiv.textContent = htmlCode;
+            const escapedCode = tempDiv.innerHTML;
+
+            const blob = new Blob([htmlCode], { type: 'text/html' });
+            const blobUrl = trackBlobUrl(blob);
+
+            const card = document.createElement('div');
+            card.className = 'exec-card done';
+            card.innerHTML = `
+                <div class="html-preview-box" style="margin-top:0;">
+                    <div class="html-preview-header">
+                        <span>🌐 HTML 渲染预览</span>
+                        <div class="html-tabs">
+                            <button class="active" onclick="switchHtmlView(this, 'preview')">预览</button>
+                            <button onclick="switchHtmlView(this, 'code')">源码</button>
+                        </div>
+                    </div>
+                    <div class="exec-out html-preview-container" style="display: block; max-height: 400px;">
+                        <iframe sandbox="allow-scripts" src="${blobUrl}" style="height: 300px;"></iframe>
+                    </div>
+                    <div class="exec-out source-container" style="display: none; max-height: 350px;">
+                        <pre style="margin:0;"><code>${escapedCode}</code></pre>
+                    </div>
+                </div>
+            `;
+            wrapper.appendChild(card);
+        } else {
+            const div = document.createElement('div');
+            div.className = `message ${sender}`;
+            
+            if (reasoningText) {
+                div.appendChild(buildReasoningPanel(reasoningText));
+            }
+
+            if (imgData) {
+                const imgEl = document.createElement('img');
+                imgEl.src = imgData;
+                imgEl.className = 'message-img';
+                div.appendChild(imgEl);
+            }
+            
+            if (fileName) {
+                const fileEl = document.createElement('div');
+                fileEl.className = 'message-file';
+                fileEl.textContent = '📄 ' + fileName;
+                div.appendChild(fileEl);
+            }
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            if (text) {
+                if (sender === 'bot') {
+                    contentDiv.innerHTML = parseMarkdown(text);
+                } else {
+                    contentDiv.textContent = text;
+                }
+            }
+            div.appendChild(contentDiv);
+            wrapper.appendChild(div);
+        }
+
+        if (sender === 'user' && msgId) {
+            const withdrawBtn = document.createElement('div');
+            withdrawBtn.className = 'withdraw-btn';
+            withdrawBtn.textContent = '撤回';
+            withdrawBtn.onclick = () => withdrawMessage(msgId);
+            wrapper.appendChild(withdrawBtn);
+        }
+
+        chatContainer.appendChild(wrapper);
+        scrollToBottom();
+        setTimeout(() => renderMermaidInDOM(wrapper), 100);
+    }
+
+    function scrollToBottom() { 
+        const scroll = () => { chatContainer.scrollTop = chatContainer.scrollHeight; };
+        scroll();
+        requestAnimationFrame(scroll);
+        setTimeout(scroll, 50);
+        setTimeout(scroll, 200);
+    }
+
+    function withdrawMessage(msgId) {
+        if (!confirm("确定要撤回这条消息及之后的所有对话吗？")) return;
+
+        if (isGenerating && currentAbortController) {
+            currentAbortController.abort();
+            isGenerating = false;
+            currentAbortController = null;
+            resetSendBtnState();
+        }
+
+        const index = chatHistory.findIndex(m => m.id === msgId);
+        if (index !== -1) {
+            chatHistory = chatHistory.slice(0, index);
+            saveHistory();
+            renderHistory();
+        }
+    }
+
+    async function saveHistory() {
+        try {
+            let jsonStr = JSON.stringify(chatHistory);
+            let b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+            let chunks = [];
+            for (let i = 0; i < b64.length; i += 4000) {
+                chunks.push(b64.slice(i, i + 4000));
+            }
+            
+            let cmd = `> /data/adb/neko/history.b64; `;
+            chunks.forEach(chunk => {
+                cmd += `echo '${chunk}' >> /data/adb/neko/history.b64; `;
+            });
+            cmd += `chmod 777 /data/adb/neko/history.b64`;
+            
+            execSync(cmd);
+        } catch(e) {
+            console.error("保存历史记录失败", e);
+            appendMessage('error-msg', `❌ 历史记录保存失败: ${e.message}`);
+        }
+    }
+
+    async function loadHistoryFromFile() {
+        try {
+            let b64 = "";
+            let i = 1;
+            
+            let totalLines = 0;
+            let wcRet = execSync(`export PATH=/data/adb/ksu/bin:/system/bin:$PATH; wc -l < /data/adb/neko/history.b64`);
+            if (wcRet && !wcRet.includes('[执行异常]') && !wcRet.includes('[无 KSU 环境]')) {
+                totalLines = parseInt(wcRet.trim(), 10);
+            }
+
+            while (true) {
+                let line = execSync(`export PATH=/data/adb/ksu/bin:/system/bin:$PATH; sed -n '${i}p' /data/adb/neko/history.b64 2>/dev/null`);
+                if (!line || line === '[无 KSU 环境]' || line.startsWith('[执行异常]')) break;
+                b64 += line.trim();
+                i++;
+                
+                if (totalLines > 0) {
+                    splashProgress.innerText = `正在读取历史记录... ${i}/${totalLines}`;
+                } else {
+                    splashProgress.innerText = `正在读取历史记录... ${i}`;
+                }
+                
+                if (i % 10 === 0) await new Promise(r => setTimeout(r, 0));
+            }
+            
+            if (b64) return JSON.parse(decodeURIComponent(escape(atob(b64))));
+        } catch (e) {
+            console.error("读取历史记录失败", e);
+        }
+        return null;
+    }
+
+    async function initData() {
+        splashProgress.innerText = '正在读取历史记录...';
+        
+        try { execSync(`settings put system pointer_location 0`); } catch(e){}
+
+        let hist = await loadHistoryFromFile();
+        
+        splashProgress.innerText = '正在渲染页面...';
+        
+        if (!hist) {
+            let oldHist = JSON.parse(localStorage.getItem('neko_chat_history')) || [];
+            if (oldHist.length > 0) {
+                chatHistory = oldHist;
+                saveHistory();
+                localStorage.removeItem('neko_chat_history');
+            }
+        } else {
+            chatHistory = hist;
+        }
+
+        chatHistory = chatHistory.map((msg, index) => {
+            let newId = (msg.id && msg.id > 0) ? msg.id : index + 1;
+            let newTs = msg.timestamp ? msg.timestamp : Date.now();
+            if (newTs > Date.now() + 86400000) newTs = Date.now();
+            
+            if (msg.role === 'tool' && msg.content === '执行中...') {
+                msg.content = '⚠️ 【操作中断】该操作因前端卡死或切到后台被意外中断，未获取到结果。';
+            }
+            
+            return { ...msg, id: newId, timestamp: newTs };
+        });
+        
+        renderedCount = 50; 
+        renderHistory();
+        
+        setTimeout(() => {
+            splashScreen.classList.add('hide');
+            setTimeout(() => { splashScreen.remove(); }, 400);
+        }, 300);
+    }
+
+    function getContextPayload() {
+        const now = new Date();
+        const timeString = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        
+        const cleanHistory = chatHistory.map(msg => {
+            let obj = { ...msg };
+            let combinedText = msg.content || "";
+            
+            if (msg.fileNames && msg.fileContents) {
+                let filesText = "";
+                for (let i = 0; i < msg.fileNames.length; i++) {
+                    filesText += `[用户发送了文件：${msg.fileNames[i]}]\n\`\`\`\n${msg.fileContents[i]}\n\`\`\`\n\n`;
+                }
+                combinedText = filesText + (combinedText ? "用户的提问：" + combinedText : "请阅读以上文件。");
+            }
+
+            let imgCount = (msg.images ? msg.images.length : 0) + (msg.image ? 1 : 0);
+            if (imgCount > 0) {
+                let think = msg.reasoning ? msg.reasoning.trim().replace(/\r?\n/g, ' ') : "一张图片";
+                if (think.length > 500) think = think.slice(0, 500) + "...";
+                let imgText = imgCount === 1 ? `\n[图片：${think}]` : `\n[发送了 ${imgCount} 张图片：${think}]`;
+                combinedText += imgText;
+            }
+            
+            if (msg.role === 'tool' && combinedText === '执行中...') {
+                combinedText = '⚠️ 【操作中断】该操作因前端卡死或切到后台被意外中断，未获取到结果。';
+            }
+            
+            obj.content = combinedText.trim();
+            
+            delete obj.fileNames;
+            delete obj.fileContents;
+            delete obj.images;
+            delete obj.image;
+
+            return obj;
+        }).filter(msg => msg.content !== '' || msg.tool_calls);
+
+        let userIndices = [];
+        for (let i = 0; i < cleanHistory.length; i++) {
+            if (cleanHistory[i].role === 'user') userIndices.push(i);
+        }
+
+        let validHistory = cleanHistory;
+        if (userIndices.length > 50) {
+            let startIndex = userIndices[userIndices.length - 25];
+            validHistory = cleanHistory.slice(startIndex);
+        }
+
+        let finalHistory = [];
+        
+        for (let i = 0; i < validHistory.length; i++) {
+            let msg = validHistory[i];
+            finalHistory.push(msg);
+
+            if (msg.role === 'assistant' && msg.tool_calls) {
+                for (let tc of msg.tool_calls) {
+                    let hasToolReply = validHistory.some(m => m.role === 'tool' && m.tool_call_id === tc.id);
+                    if (!hasToolReply) {
+                        finalHistory.push({
+                            role: 'tool',
+                            tool_call_id: tc.id,
+                            content: "系统提示：前端被意外中断，未获取到执行结果。"
+                        });
+                    }
+                }
+            }
+        }
+
+        while (finalHistory.length > 0 && finalHistory[0].role !== 'user') {
+            finalHistory.shift();
+        }
+
+        return [
+            {role: 'system', content: BASE_PROMPT}, 
+            ...finalHistory,
+            {role: 'system', content: `【当前时间：${timeString}】`}
+        ];
+    }
+
+    async function routeTask(text) {
+        if (!cfg.API_KEY || !cfg.MODEL_FLASH) return 'FLASH_HIGH';
+        try {
+            const res = await fetch(cfg.API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.API_KEY}` },
+                body: JSON.stringify({
+                    model: cfg.MODEL_FLASH,
+                    messages: [
+                        {role: 'system', content: `你是一个极度精准的意图分类器。请阅读用户的输入，并严格仅输出以下组合词之一，不要包含任何标点、空格或解释：
+FLASH_NONE：日常打招呼、简单闲聊。
+FLASH_LOW：简单问答、不需要深度思考。
+FLASH_HIGH：需要查资料的普通任务、一般性知识。
+FLASH_MAX：需要大量查阅资料或细致排版分析的任务。
+PRO_NONE：需要写代码但不复杂的任务。
+PRO_LOW：普通逻辑推导或修改小段代码。
+PRO_HIGH：复杂逻辑推导、写较大代码块。
+PRO_MAX：极难的数学证明或超长代码工程任务。`},
+                        {role: 'user', content: text}
+                    ],
+                    stream: false
+                })
+            });
+            const data = await res.json();
+            if (data.error) return 'FLASH_HIGH';
+            if (data.choices && data.choices.length > 0) {
+                let reply = data.choices[0].message.content.trim().toUpperCase();
+                const validCombos = ['FLASH_NONE', 'FLASH_LOW', 'FLASH_HIGH', 'FLASH_MAX', 'PRO_NONE', 'PRO_LOW', 'PRO_HIGH', 'PRO_MAX'];
+                for (let combo of validCombos) {
+                    if (reply.includes(combo)) return combo;
+                }
+                if (reply.includes('REASON')) return 'PRO_HIGH';
+                if (reply.includes('CHAT')) return 'FLASH_HIGH';
+            }
+        } catch (e) { console.error("路由分类失败:", e); }
+        return 'FLASH_HIGH';
+    }
+
+    async function checkCommandSafety(cmd) {
+        if (!cfg.API_KEY || !cfg.MODEL_FLASH) return { status: 'DANGEROUS', reason: '未配置安检模型，默认拦截' };
+        try {
+            const res = await fetch(cfg.API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.API_KEY}` },
+                body: JSON.stringify({
+                    model: cfg.MODEL_FLASH,
+                    messages: [
+                        {role: 'system', content: `你是一个安卓系统安全专家。请判断以下 Shell 命令是否具有破坏性（如删除文件、刷机、重启、格式化、修改系统核心配置等）或是否可能产生超长输出导致日志卡死。
+如果命令极其安全且输出极短（如 echo, getprop, pm list packages | head 等），仅输出 SAFE。
+如果命令危险或可能无限输出（如 rm -rf, dd, reboot, cat /dev/urandom, cat 二进制文件 等），仅输出 DANGEROUS|风险简述。
+风险简述必须非常简短，10个字左右，例如"会删除文件"、"重启会断开连接"。
+不要输出任何其他文字。`},
+                        {role: 'user', content: cmd}
+                    ],
+                    stream: false
+                })
+            });
+            const data = await res.json();
+            if (data.error) return { status: 'DANGEROUS', reason: '安检请求失败' };
+            if (data.choices && data.choices.length > 0) {
+                let reply = data.choices[0].message.content.trim().toUpperCase();
+                if (reply.includes('SAFE')) return { status: 'SAFE', reason: '' };
+                if (reply.includes('DANGEROUS')) {
+                    let parts = reply.split('|');
+                    let reason = parts.length > 1 ? parts[1].trim() : "该命令具有破坏性";
+                    return { status: 'DANGEROUS', reason: reason };
+                }
+            }
+        } catch (e) { console.error("安检失败:", e); }
+        return { status: 'DANGEROUS', reason: '安检网络异常，默认拦截' };
+    }
+
+    async function callSearchAPI(query) {
+        try {
+            const res = await fetch(cfg.SEARCH_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.API_KEY}` },
+                body: JSON.stringify({ query: query.trim().slice(0, 128), count: 3 })
+            });
+            const data = await res.json();
+            if (data.results && data.results.length > 0) {
+                let summary = "搜索结果如下：\n";
+                data.results.forEach((r, i) => {
+                    summary += `[${i+1}] 标题: ${r.title}\n链接: ${r.url}\n摘要: ${r.summary || r.snippet}\n\n`;
+                });
+                return summary;
+            }
+            return "未搜索到相关结果。";
+        } catch(e) {
+            return "搜索出错：" + e.message;
+        }
+    }
+
+    async function callFetchAPI(url) {
+        try {
+            const res = await fetch(cfg.FETCH_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.API_KEY}` },
+                body: JSON.stringify({ url: url.trim() })
+            });
+            const data = await res.json();
+            if (data.content) {
+                return "网页抓取结果：\n" + data.content.slice(0, 5000);
+            }
+            return "抓取失败，内容为空。";
+        } catch(e) {
+            return "抓取出错：" + e.message;
+        }
+    }
+
+    async function callWriteMemory(content) {
+        try {
+            let ts = Math.floor(Date.now() / 1000);
+            let safeContent = content.replace(/'/g, "'\\''");
+            execSync(`echo '${ts}|${safeContent}' >> /data/adb/neko/memory.txt`);
+            return "已成功写入记忆。";
+        } catch(e) {
+            return "写入记忆失败：" + e.message;
+        }
+    }
+
+    async function callSearchMemory(keyword) {
+        try {
+            let totalLines = 0;
+            let wcRet = execSync(`export PATH=/data/adb/ksu/bin:/system/bin:$PATH; wc -l < /data/adb/neko/memory.txt`);
+            if (wcRet && !wcRet.includes('[执行异常]') && !wcRet.includes('[无 KSU 环境]')) {
+                totalLines = parseInt(wcRet.trim(), 10);
+            }
+            if (totalLines === 0) return "记忆库为空。";
+
+            let lines = [];
+            for (let i = 1; i <= totalLines; i++) {
+                let line = execSync(`export PATH=/data/adb/ksu/bin:/system/bin:$PATH; sed -n '${i}p' /data/adb/neko/memory.txt 2>/dev/null`);
+                if (line && !line.startsWith('[执行异常]') && !line.startsWith('[无 KSU 环境]')) {
+                    lines.push(line.trim());
+                }
+                if (i % 10 === 0) await new Promise(r => setTimeout(r, 0));
+            }
+
+            if (!keyword || keyword.trim() === '') {
+                lines = lines.slice(-10);
+            } else {
+                let kw = keyword.toLowerCase();
+                lines = lines.filter(l => l.toLowerCase().includes(kw)).slice(-20);
+            }
+
+            if (lines.length === 0) return "没有找到相关的记忆。";
+            
+            let output = "已找到以下相关记忆：\n";
+            lines.forEach(l => {
+                let parts = l.split('|');
+                if (parts.length >= 2) {
+                    let dateStr = new Date(parseInt(parts[0]) * 1000).toISOString().slice(0,10);
+                    output += `[${parts[0]}] (${dateStr}) ${parts.slice(1).join('|')}\n`;
+                } else {
+                    output += l + '\n';
+                }
+            });
+            return output;
+        } catch(e) {
+            return "检索记忆失败：" + e.message;
+        }
+    }
+
+    async function callDeleteMemory(timestamp) {
+        try {
+            let ts = String(timestamp).trim();
+            if (!ts) return "时间戳无效。";
+
+            let totalLines = 0;
+            let wcRet = execSync(`export PATH=/data/adb/ksu/bin:/system/bin:$PATH; wc -l < /data/adb/neko/memory.txt`);
+            if (wcRet && !wcRet.includes('[执行异常]') && !wcRet.includes('[无 KSU 环境]')) {
+                totalLines = parseInt(wcRet.trim(), 10);
+            }
+            if (totalLines === 0) return "记忆库为空。";
+
+            let lines = [];
+            for (let i = 1; i <= totalLines; i++) {
+                let line = execSync(`export PATH=/data/adb/ksu/bin:/system/bin:$PATH; sed -n '${i}p' /data/adb/neko/memory.txt 2>/dev/null`);
+                if (line && !line.startsWith('[执行异常]') && !line.startsWith('[无 KSU 环境]')) {
+                    lines.push(line.trim());
+                }
+                if (i % 10 === 0) await new Promise(r => setTimeout(r, 0));
+            }
+
+            let newLines = lines.filter(l => !l.startsWith(ts + '|'));
+
+            if (newLines.length === lines.length) {
+                return `未找到时间戳为 ${ts} 的记忆。`;
+            }
+
+            let cmd = `> /data/adb/neko/memory.txt; `;
+            newLines.forEach(line => {
+                let safeLine = line.replace(/'/g, "'\\''");
+                cmd += `echo '${safeLine}' >> /data/adb/neko/memory.txt; `;
+            });
+            execSync(cmd);
+            return `已彻底遗忘该条记忆（时间戳：${ts}）。`;
+        } catch(e) {
+            return "删除记忆失败：" + e.message;
+        }
+    }
+
+    async function callAgentReadUI() {
+        try {
+            execSync(`sh /data/adb/modules/neko/read_ui.sh`);
+            
+            let filePath = `/data/adb/neko/ui_res.txt`;
+            let lines = [];
+            let lineNum = 1;
+            while (lineNum <= 500) {
+                let line = execSync(`sed -n '${lineNum}p' ${filePath}`);
+                if (line.trim() === "___EOF___") break;
+                if (line && !line.startsWith('[执行异常]')) {
+                    lines.push(line.trim());
+                }
+                lineNum++;
+                if (lineNum % 50 === 0) await new Promise(r => setTimeout(r, 0));
+            }
+            
+            if (lines.length === 0) return "当前 UI 树没有解析到任何有文本或描述的节点。请尝试 read_ocr 或 view_image。";
+            return "【UI 树解析结果】\n" + lines.join('\n');
+        } catch(e) {
+            return "读取 UI 树失败：" + e.message;
+        }
+    }
+
+    async function callAgentReadOCR() {
+        try {
+            execSync(`sh /data/adb/modules/neko/read_ocr.sh`);
+            
+            let filePath = `/data/adb/neko/ocr_res.txt`;
+            let lines = [];
+            let lineNum = 1;
+            while (lineNum <= 500) {
+                let line = execSync(`sed -n '${lineNum}p' ${filePath}`);
+                if (line.trim() === "___EOF___") break;
+                if (line && !line.startsWith('[执行异常]')) {
+                    lines.push(line.trim());
+                }
+                lineNum++;
+                if (lineNum % 50 === 0) await new Promise(r => setTimeout(r, 0));
+            }
+            
+            if (lines.length === 0) return "当前屏幕未识别到任何文字。请尝试 view_image。";
+            return "【本地 OCR 识别结果】\n" + lines.join('\n');
+        } catch(e) {
+            return "执行 OCR 失败：" + e.message;
+        }
+    }
+
+    async function callAgentViewImage() {
+        try {
+            execSync(`screencap -p /data/adb/neko/screen.png`);
+            execSync(`base64 /data/adb/neko/screen.png | tr -d '\\n' > /data/adb/neko/screen.b64`);
+            
+            let sizeRet = execSync(`wc -c < /data/adb/neko/screen.b64`);
+            let totalBytes = 0;
+            if (sizeRet && !sizeRet.startsWith('[执行异常]') && !sizeRet.startsWith('[无 KSU 环境]')) {
+                totalBytes = parseInt(sizeRet.trim(), 10);
+            }
+            if (!totalBytes) {
+                return "【截图失败】base64 编码为空";
+            }
+            
+            const CHUNK = 2048;
+            const totalBlocks = Math.ceil(totalBytes / CHUNK);
+            let b64 = "";
+            for (let i = 0; i < totalBlocks; i++) {
+                let chunk = execSync(`dd if=/data/adb/neko/screen.b64 bs=${CHUNK} skip=${i} count=1 2>/dev/null`);
+                if (chunk && !chunk.startsWith('[执行异常]') && !chunk.startsWith('[无 KSU 环境]')) {
+                    b64 += chunk.replace(/\n/g, '');
+                }
+                if (i % 20 === 0) await new Promise(r => setTimeout(r, 0));
+            }
+            
+            if (!b64 || b64.length < 100) {
+                return "【截图失败】Base64 数据为空或损坏";
+            }
+            
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        let w = img.width;
+                        let h = img.height;
+                        const maxDim = 768;
+                        if (w > maxDim || h > maxDim) {
+                            const ratio = Math.min(maxDim / w, maxDim / h);
+                            w = Math.round(w * ratio);
+                            h = Math.round(h * ratio);
+                        }
+                        canvas.width = w;
+                        canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        const resizedB64 = canvas.toDataURL('image/jpeg', 0.6);
+                        
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 30000);
+                        
+                        fetch(cfg.API_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.API_KEY}` },
+                            body: JSON.stringify({
+                                model: cfg.MODEL_FLASH,
+                                max_tokens: 800,
+                                reasoning_effort: "none", 
+                                messages: [{
+                                    role: 'user',
+                                    content: [
+                                        { type: "text", text: "这是手机当前全屏截图。请直接用不超过 80 字描述：1. 当前是哪个 App 或界面；2. 主要区域布局（上/中/下/左/右）；3. 有哪些关键可点击元素及其大致位置。不要输出思考过程，不要统计字数，不要逐字念所有文字。" },
+                                        { type: "image_url", image_url: { url: resizedB64 } }
+                                    ]
+                                }]
+                            }),
+                            signal: controller.signal
+                        }).then(r => r.json()).then(data => {
+                            clearTimeout(timeoutId);
+                            if (data.choices && data.choices.length > 0) {
+                                let msg = data.choices[0].message;
+                                let desc = msg.content || "";
+                                
+                                if (desc.trim().length > 0) {
+                                    resolve("【识图成功】" + desc);
+                                } else if (msg.reasoning_content) {
+                                    let think = msg.reasoning_content.trim();
+                                    let fallback = think.length > 120 ? "..." + think.slice(-120) : think;
+                                    resolve("【识图成功】（提取自思考过程）" + fallback);
+                                } else {
+                                    resolve("【识图失败】模型未返回任何描述文本");
+                                }
+                            } else {
+                                let msg = (data.error && data.error.message) ? data.error.message : "未知错误";
+                                resolve("【识图失败】" + msg);
+                            }
+                        }).catch(e => {
+                            clearTimeout(timeoutId);
+                            if (e.name === 'AbortError') {
+                                resolve("【识图失败】请求超时 30 秒");
+                            } else {
+                                resolve("【识图失败】网络错误：" + e.message);
+                            }
+                        });
+                    } catch(e) {
+                        resolve("【识图失败】图片处理异常：" + e.message);
+                    }
+                };
+                img.onerror = () => resolve("【截图失败】前端加载截图 Base64 损坏");
+                img.src = "data:image/png;base64," + b64;
+            });
+        } catch(e) {
+            return "【截图失败】执行异常：" + e.message;
+        }
+    }
+
+    async function callAgentAction(cmd) {
+        try {
+            execSync(cmd);
+            await new Promise(r => setTimeout(r, 1500)); 
+            return "操作执行成功。";
+        } catch(e) {
+            return "操作执行失败：" + e.message;
+        }
+    }
+
+    async function callAgentNotify(text) {
+        try {
+            let safeText = text.replace(/"/g, '\\"');
+            execSync(`cmd notification post -S bigtext -t "猫娘助手" "Agent" "${safeText}"`);
+            return "通知已发送。";
+        } catch(e) {
+            return "通知发送失败：" + e.message;
+        }
+    }
+
+    async function callDeepSeekStream(messages, model, tools, effort, onReasoning, onContent, onToolCall) {
+        if (!model) return { error: { message: "模型未配置，请检查 config.conf" } };
+        
+        if (!currentAbortController) {
+            currentAbortController = new AbortController();
+        }
+        const controller = currentAbortController;
+        const timeoutId = setTimeout(() => controller.abort(), 300000);
+
+        try {
+            let body = { model, messages, tools, stream: true };
+            if (effort && effort !== 'none') {
+                body.reasoning_effort = effort;
+            } else if (effort === 'none') {
+                body.reasoning_effort = 'none';
+            }
+
+            const res = await fetch(cfg.API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.API_KEY}` },
+                body: JSON.stringify(body),
+                signal: controller.signal
+            });
+            
+            if (!res.ok) {
+                const errData = await res.json().catch(()=>({}));
+                clearTimeout(timeoutId);
+                return { error: errData.error || { message: `HTTP ${res.status}` } };
+            }
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+            let toolCallsAccumulator = {};
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                let lines = buffer.split('\n');
+                buffer = lines.pop();
+                for (let line of lines) {
+                    line = line.trim();
+                    if (line.startsWith('data: ')) {
+                        let dataStr = line.slice(6).trim();
+                        if (dataStr === '[DONE]') continue;
+                        try {
+                            let data = JSON.parse(dataStr);
+                            let delta = data.choices[0].delta;
+                            if (delta.reasoning_content) onReasoning(delta.reasoning_content);
+                            if (delta.content) onContent(delta.content);
+                            
+                            if (delta.tool_calls) {
+                                delta.tool_calls.forEach(tc => {
+                                    if (!toolCallsAccumulator[tc.index]) {
+                                        toolCallsAccumulator[tc.index] = { id: tc.id, type: 'function', function: { name: tc.function.name, arguments: '' } };
+                                    }
+                                    if (tc.function.arguments) {
+                                        toolCallsAccumulator[tc.index].function.arguments += tc.function.arguments;
+                                    }
+                                });
+                                onToolCall(toolCallsAccumulator);
+                            }
+                        } catch(e){}
+                    }
+                }
+            }
+            clearTimeout(timeoutId);
+            return { success: true, tool_calls: Object.values(toolCallsAccumulator) };
+        } catch (e) {
+            clearTimeout(timeoutId);
+            if (e.name === 'AbortError') return { aborted: true };
+            return { error: { message: `请求异常: ${e.message}` } };
+        }
+    }
+
+    const TOOLS = [
+        {
+            type: "function",
+            function: {
+                name: "search",
+                description: "搜索互联网获取实时信息、新闻或资料。",
+                parameters: { type: "object", properties: { query: { type: "string", description: "搜索关键词" } }, required: ["query"] }
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "fetch_url",
+                description: "抓取指定网页的完整文本内容。",
+                parameters: { type: "object", properties: { url: { type: "string", description: "网页 URL 地址" } }, required: ["url"] }
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "execute_command",
+                description: "在 Android 系统上执行 Shell 命令。",
+                parameters: { type: "object", properties: { command: { type: "string", description: "要执行的 Shell 命令" } }, required: ["command"] }
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "write_memory",
+                description: "记录主人的长期记忆（必须是关键词格式，不是长句）。",
+                parameters: { type: "object", properties: { content: { type: "string", description: "由空格或逗号分隔的关键词，例如'偏好 咖啡 拿铁'" } }, required: ["content"] }
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "search_memory",
+                description: "搜索长期记忆。",
+                parameters: { type: "object", properties: { keyword: { type: "string", description: "要搜索的关键词，为空则返回最近10条" } } }
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "delete_memory",
+                description: "根据时间戳删除某条长期记忆。",
+                parameters: { type: "object", properties: { timestamp: { type: "number", description: "要删除记忆的时间戳数字" } }, required: ["timestamp"] }
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "read_ui",
+                description: "抓取当前界面的 UI 树节点。速度快，能直接拿到按钮文本、状态和坐标。但遇到 WebView 或纯图界面可能会返回空。"
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "read_ocr",
+                description: "调用本地 OCR 识别屏幕上的文字及坐标。速度适中，不用网络。强烈推荐优先使用它来寻找文字按钮。"
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "tap_screen",
+                description: "点击手机屏幕的特定坐标。",
+                parameters: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, required: ["x", "y"] }
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "swipe_screen",
+                description: "滑动手机屏幕。",
+                parameters: { type: "object", properties: { start_x: { type: "number" }, start_y: { type: "number" }, end_x: { type: "number" }, end_y: { type: "number" } }, required: ["start_x", "start_y", "end_x", "end_y"] }
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "input_text",
+                description: "向当前焦点输入框输入文字（支持中文）。",
+                parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] }
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "press_key",
+                description: "按下系统按键。3:主页, 4:返回, 66:回车, 187:多任务。",
+                parameters: { type: "object", properties: { keycode: { type: "number" } }, required: ["keycode"] }
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "view_image",
+                description: "截取全屏并发送给多模态 AI 识别。非常消耗 Token 且速度较慢，仅在纯图界面或上述两个工具都无效时使用。"
+            }
+        },
+        {
+            type: "function",
+            function: {
+                name: "notify_user",
+                description: "在系统通知栏给主人发送消息汇报进度。",
+                parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] }
+            }
+        }
+    ];
+
+    function resetSendBtnState() {
+        isGenerating = false;
+        sendBtn.disabled = false;
+        sendBtn.classList.remove('stopping');
+        sendBtn.innerText = '发送';
+        userInput.disabled = false;
+        userInput.focus();
+    }
+
+    async function processStreamAndFollowUp(ctx, currentModel, effort, streamWrapper, depth = 0) {
+        let fullReasoning = '';
+        let fullContent = '';
+        let detailsPanel = null;
+        let div = streamWrapper.querySelector('.message.bot');
+        let contentDiv = div.querySelector('.message-content');
+        if (!contentDiv) {
+            contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            div.appendChild(contentDiv);
+        }
+
+        let bubbleBuffer = "";
+
+        const res = await callDeepSeekStream(ctx, currentModel, TOOLS, effort,
+            (reasoningDelta) => {
+                fullReasoning += reasoningDelta;
+                if (!detailsPanel) {
+                    detailsPanel = buildReasoningPanel(fullReasoning);
+                    div.insertBefore(detailsPanel, div.firstChild);
+                } else {
+                    detailsPanel.querySelector('.reasoning-content').textContent = fullReasoning;
+                }
+                scrollToBottom();
+
+                if (isAgentMode) {
+                    bubbleBuffer += reasoningDelta;
+                    if (/[。！？；\n]/.test(reasoningDelta) || /[\.!\?;]/.test(reasoningDelta) || bubbleBuffer.length > 40) {
+                        if (bubbleBuffer.trim().length > 2) {
+                            queueToast(bubbleBuffer.trim());
+                            bubbleBuffer = "";
+                        }
+                    }
+                }
+            },
+            (contentDelta) => {
+                fullContent += contentDelta;
+                if (detailsPanel && detailsPanel.open) detailsPanel.open = false;
+                contentDiv.innerHTML = parseMarkdown(fullContent);
+                scrollToBottom();
+            },
+            (toolCalls) => {
+                if (detailsPanel && detailsPanel.open) detailsPanel.open = false;
+                let displayContent = fullContent;
+                toolCalls.forEach(tc => {
+                    let desc = "正在调用工具...";
+                    try {
+                        let args = JSON.parse(tc.function.arguments);
+                        if (tc.function.name === 'search') desc = '🔍 正在搜索: ' + args.query;
+                        else if (tc.function.name === 'fetch_url') desc = '🌐 正在抓取: ' + args.url;
+                        else if (tc.function.name === 'execute_command') desc = '🐱 请求执行命令: ' + args.command;
+                        else if (tc.function.name === 'read_ui') desc = '📱 正在读取 UI 树...';
+                        else if (tc.function.name === 'read_ocr') desc = '👁️ 正在进行本地 OCR 识屏...';
+                        else if (tc.function.name === 'tap_screen') desc = '👆 正在点击屏幕...';
+                        else if (tc.function.name === 'view_image') desc = '🖼️ 正在请求云端识图...';
+                    } catch(e){}
+                    displayContent += `<br><span style="color:#ff9800;font-size:13px;">${desc}</span>`;
+                });
+                contentDiv.innerHTML = parseMarkdown(displayContent);
+                scrollToBottom();
+            }
+        );
+
+        if (res.aborted) {
+            streamWrapper.remove();
+            if (fullContent || fullReasoning) {
+                let displayModel = currentModel === cfg.MODEL_PRO ? 'Pro' : 'Flash';
+                chatHistory.push({ 
+                    id: getNextId(), role: 'assistant', content: fullContent, 
+                    reasoning: fullReasoning, model: displayModel + ' [已中止]', timestamp: Date.now() 
+                });
+                await saveHistory();
+                renderHistory();
+            }
+            if (isAgentMode) {
+                execSync(`settings put system pointer_location 0`);
+                isAgentMode = false;
+                stopSilentAudio();
+            }
+            return;
+        }
+
+        if (res.error) {
+            streamWrapper.remove();
+            appendMessage('error-msg', `❌ API 错误: ${res.error.message || JSON.stringify(res.error)}`);
+            if (isAgentMode) {
+                execSync(`settings put system pointer_location 0`);
+                isAgentMode = false;
+                stopSilentAudio();
+            }
+            return;
+        }
+
+        streamWrapper.remove();
+
+        if (res.tool_calls && res.tool_calls.length > 0) {
+            let newMsg = { 
+                id: getNextId(), role: 'assistant', content: fullContent, 
+                reasoning: fullReasoning, tool_calls: res.tool_calls,
+                model: 'System Action', timestamp: Date.now() 
+            };
+            chatHistory.push(newMsg);
+
+            res.tool_calls.forEach(tc => {
+                chatHistory.push({
+                    id: getNextId(), role: 'tool', tool_call_id: tc.id,
+                    content: "执行中...", model: 'Tool Result', timestamp: Date.now()
+                });
+            });
+
+            await saveHistory();
+            renderMessageWithTags(newMsg, 'bot');
+            setTimeout(() => renderMermaidInDOM(chatContainer), 100);
+
+            const isAgentTool = res.tool_calls.some(tc => ['read_ui', 'read_ocr', 'tap_screen', 'swipe_screen', 'input_text', 'press_key', 'view_image'].includes(tc.function.name));
+
+            if (isAgentTool && !isAgentMode) {
+                let cardEl = document.getElementById(`tool-card-${res.tool_calls[0].id}`);
+                if (!cardEl) {
+                     cardEl = chatContainer.querySelectorAll('.exec-card')[chatContainer.querySelectorAll('.exec-card').length - 1];
+                }
+                
+                if (cardEl) {
+                    cardEl.classList.add('danger');
+                    cardEl.innerHTML = `<div style="color:#ff8888; font-weight:bold;">⚠️ 请求系统操控授权：</div>
+                        <div style="font-size:12px; color:#aaa; margin-bottom:10px;">猫娘请求接管屏幕操作。长按下方按钮 3 秒开启 Agent 模式。</div>
+                        <div class="exec-actions">
+                            <button class="btn-no" id="btn-reject-agent">拒绝</button>
+                            <button class="btn-danger-longpress" id="btn-agent-auth">
+                                <div class="progress-bar" id="prog-agent"></div>
+                                <span>长按3秒授权接管</span>
+                            </button>
+                        </div>`;
+                    
+                    let btnReject = cardEl.querySelector('#btn-reject-agent');
+                    let btnAuth = cardEl.querySelector('#btn-agent-auth');
+                    let progBar = cardEl.querySelector('#prog-agent');
+                    let spanText = btnAuth.querySelector('span');
+                    
+                    let pressTimer, progressInterval, startTime;
+
+                    btnReject.onclick = () => {
+                        cardEl.classList.remove('danger');
+                        cardEl.innerHTML = `<div>🐱 系统操作记录：</div>
+                            <div class="exec-cmd">${escapeHTML(res.tool_calls[0].function.name)}</div>
+                            <div class="exec-status" style="color:#f44336;">❌ 已拒绝授权</div>`;
+                        res.tool_calls.forEach(tc => {
+                            let tm = chatHistory.find(m => m.role === 'tool' && m.tool_call_id === tc.id);
+                            if (tm) tm.content = "⚠️ 用户拒绝了系统操控授权。";
+                        });
+                        saveHistory();
+                        isGenerating = false;
+                        currentAbortController = null;
+                        resetSendBtnState();
+                    };
+                    
+                    const startPress = (e) => {
+                        e.preventDefault();
+                        startTime = Date.now();
+                        spanText.textContent = "继续按住...";
+                        
+                        if (audioCtx) {
+                            if (audioCtx.state === 'suspended') audioCtx.resume();
+                        } else {
+                            try {
+                                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                            } catch(e){}
+                        }
+
+                        progressInterval = setInterval(() => {
+                            let percent = Math.min(100, ((Date.now() - startTime) / 3000) * 100);
+                            progBar.style.width = percent + '%';
+                        }, 50);
+                        
+                        pressTimer = setTimeout(() => {
+                            clearInterval(progressInterval);
+                            progBar.style.width = '100%';
+                            isAgentMode = true;
+
+                            execSync(`settings put system pointer_location 1`);
+                            startSilentAudio();
+                            
+                            let countdown = 3;
+                            spanText.textContent = `已授权，${countdown}s后开始(请挂小窗)`;
+                            btnAuth.style.pointerEvents = 'none';
+                            btnAuth.style.opacity = '0.5';
+                            btnReject.style.pointerEvents = 'none';
+                            btnReject.style.opacity = '0.5';
+                            
+                            let cdInterval = setInterval(() => {
+                                countdown--;
+                                if (countdown > 0) {
+                                    spanText.textContent = `已授权，${countdown}s后开始(请挂小窗)`;
+                                } else {
+                                    clearInterval(cdInterval);
+                                    spanText.textContent = "开始执行...";
+                                    proceedAgentTools(newMsg, currentModel, effort);
+                                }
+                            }, 1000);
+
+                        }, 3000);
+                    };
+                    const cancelPress = () => {
+                        clearTimeout(pressTimer);
+                        clearInterval(progressInterval);
+                        progBar.style.width = '0%';
+                        spanText.textContent = "长按3秒授权接管";
+                    };
+                    btnAuth.addEventListener('mousedown', startPress);
+                    btnAuth.addEventListener('touchstart', startPress, {passive: false});
+                    btnAuth.addEventListener('mouseup', cancelPress);
+                    btnAuth.addEventListener('mouseleave', cancelPress);
+                    btnAuth.addEventListener('touchend', cancelPress);
+                    btnAuth.addEventListener('touchcancel', cancelPress);
+                }
+                return;
+            }
+
+            proceedAgentTools(newMsg, currentModel, effort);
+            return;
+        }
+
+        if (fullContent || fullReasoning) {
+            let displayModel = currentModel === cfg.MODEL_PRO ? 'Pro' : 'Flash';
+            if (effort !== 'none') displayModel += ` (${effort})`;
+            
+            let newMsg = { 
+                id: getNextId(), role: 'assistant', content: fullContent, 
+                reasoning: fullReasoning, model: displayModel, timestamp: Date.now() 
+            };
+            chatHistory.push(newMsg);
+            await saveHistory();
+            
+            renderMessageWithTags(newMsg, 'bot');
+            setTimeout(() => renderMermaidInDOM(chatContainer), 100);
+
+            if (isAgentMode) {
+                sendToast("🐱 思考完成，请切回 WebUI 查看结果喵～");
+                execSync(`settings put system pointer_location 0`);
+                isAgentMode = false;
+                stopSilentAudio();
+            }
+        }
+    }
+
+    async function proceedAgentTools(msgObj, currentModel, effort) {
+        for (let tc of msgObj.tool_calls) {
+            if (currentAbortController && currentAbortController.signal.aborted) {
+                if (isAgentMode) {
+                    execSync(`settings put system pointer_location 0`);
+                    isAgentMode = false;
+                    stopSilentAudio();
+                }
+                break;
+            }
+            
+            let toolMsg = chatHistory.find(m => m.role === 'tool' && m.tool_call_id === tc.id);
+            if (!toolMsg) {
+                toolMsg = { id: getNextId(), role: 'tool', tool_call_id: tc.id, content: "执行中...", model: 'Tool Result', timestamp: Date.now() };
+                chatHistory.push(toolMsg);
+                await saveHistory();
+            }
+
+            let args = JSON.parse(tc.function.arguments);
+            let toolResult = "";
+            let cardEl = document.getElementById(`tool-card-${tc.id}`);
+            
+            if (cardEl) {
+                cardEl.classList.remove('danger');
+            }
+            
+            await new Promise(r => setTimeout(r, 1000));
+
+            if (tc.function.name === 'execute_command') {
+                if (isAgentMode) {
+                    if (cardEl) {
+                        cardEl.classList.add('done');
+                        cardEl.innerHTML = `<div>🐱 正在后台执行...</div>
+                            <div class="exec-cmd">${escapeHTML(args.command)}</div>
+                            <div class="exec-out" style="display:block;">等待 KSU 执行...</div>`;
+                    }
+                    sendToast(`🐱 执行命令: ${args.command}`);
+                    execSync(`export PATH=/data/adb/ksu/bin:/system/bin:$PATH; echo '${args.command.replace(/'/g, "'\\''")}' > /data/adb/neko/neko_cmd.txt`);
+                    execSync(`export PATH=/data/adb/ksu/bin:/system/bin:$PATH; sh /data/adb/modules/neko/neko_exec.sh > /dev/null 2>&1 &`);
+                    await new Promise(r => setTimeout(r, 1500));
+                    let allText = "";
+                    let lineNum = 1;
+                    while (lineNum <= 500) {
+                        let line = execSync(`sed -n '${lineNum}p' /data/adb/neko/neko_res.txt`);
+                        if (line.trim() === "___EOF___" || line.trim() === "___TIMEOUT___") break;
+                        allText += line + "\n";
+                        lineNum++;
+                        if (lineNum % 50 === 0) await new Promise(r => setTimeout(r, 0));
+                    }
+                    toolResult = allText.trim() || "(无输出)";
+                } else {
+                    if (cardEl) {
+                        cardEl.classList.add('done');
+                        cardEl.innerHTML = `<div>🐱 正在评估命令风险...</div>
+                            <div class="exec-cmd">${escapeHTML(args.command)}</div>
+                            <div class="exec-out">安检中，请稍候...</div>`;
+                    }
+                    scrollToBottom();
+
+                    let safety = await checkCommandSafety(args.command);
+                    let isDangerous = (safety.status === 'DANGEROUS');
+                    let isApproved = true;
+
+                    if (isDangerous) {
+                        if (cardEl) {
+                            cardEl.classList.add('danger');
+                            cardEl.innerHTML = `<div style="color:#ff8888; font-weight:bold;">⚠️ 高危命令拦截：</div>
+                                <div class="exec-cmd" style="color:#ff8888; border-color:#662222;">${escapeHTML(args.command)}</div>
+                                <div style="font-size:12px; color:#ff8888; margin-bottom:10px;">安检AI：${escapeHTML(safety.reason)}</div>
+                                <div class="exec-actions">
+                                    <button class="btn-no" id="btn-cancel-${tc.id}">取消执行</button>
+                                    <button class="btn-danger-longpress" id="btn-longpress-${tc.id}">
+                                        <div class="progress-bar" id="prog-${tc.id}"></div>
+                                        <span>长按3秒继续执行</span>
+                                    </button>
+                                </div>`;
+                            
+                            isApproved = await new Promise((resolve) => {
+                                let btnCancel = cardEl.querySelector(`#btn-cancel-${tc.id}`);
+                                let btnLongPress = cardEl.querySelector(`#btn-longpress-${tc.id}`);
+                                let progBar = cardEl.querySelector(`#prog-${tc.id}`);
+                                let spanText = btnLongPress.querySelector('span');
+                                
+                                let pressTimer, progressInterval, startTime;
+                                btnCancel.onclick = () => resolve(false);
+
+                                const startPress = (e) => {
+                                    e.preventDefault();
+                                    startTime = Date.now();
+                                    spanText.textContent = "继续按住...";
+                                    progressInterval = setInterval(() => {
+                                        let percent = Math.min(100, ((Date.now() - startTime) / 3000) * 100);
+                                        progBar.style.width = percent + '%';
+                                    }, 50);
+                                    pressTimer = setTimeout(() => {
+                                        clearInterval(progressInterval);
+                                        progBar.style.width = '100%';
+                                        spanText.textContent = "执行中...";
+                                        resolve(true);
+                                    }, 3000);
+                                };
+
+                                const cancelPress = () => {
+                                    clearTimeout(pressTimer);
+                                    clearInterval(progressInterval);
+                                    progBar.style.width = '0%';
+                                    spanText.textContent = "长按3秒继续执行";
+                                };
+
+                                btnLongPress.addEventListener('mousedown', startPress);
+                                btnLongPress.addEventListener('touchstart', startPress, {passive: false});
+                                btnLongPress.addEventListener('mouseup', cancelPress);
+                                btnLongPress.addEventListener('mouseleave', cancelPress);
+                                btnLongPress.addEventListener('touchend', cancelPress);
+                                btnLongPress.addEventListener('touchcancel', cancelPress);
+                            });
+                        }
+                    } else {
+                        if (cardEl) {
+                            cardEl.classList.remove('danger');
+                            cardEl.classList.add('done');
+                            cardEl.innerHTML = `<div>🐱 安检通过，正在执行...</div>
+                                <div class="exec-cmd">${escapeHTML(args.command)}</div>
+                                <div class="exec-out" style="display:block;">等待 KSU 执行...</div>`;
+                        }
+                        scrollToBottom();
+                        await new Promise(r => setTimeout(r, 500));
+                    }
+
+                    if (isApproved) {
+                        if (cardEl) {
+                            cardEl.innerHTML = `<div>🐱 正在后台执行...</div>
+                                <div class="exec-cmd">${escapeHTML(args.command)}</div>
+                                <div class="exec-out" style="display:block;">等待 KSU 执行...</div>`;
+                        }
+                        scrollToBottom();
+
+                        execSync(`export PATH=/data/adb/ksu/bin:/system/bin:$PATH; echo '${args.command.replace(/'/g, "'\\''")}' > /data/adb/neko/neko_cmd.txt`);
+                        execSync(`export PATH=/data/adb/ksu/bin:/system/bin:$PATH; sh /data/adb/modules/neko/neko_exec.sh > /dev/null 2>&1 &`);
+                        
+                        let outBox = cardEl ? cardEl.querySelector('.exec-out') : null;
+                        let allText = "";
+                        let startTime = Date.now();
+                        let finished = false;
+                        
+                        while (!finished) {
+                            await new Promise(r => setTimeout(r, 500));
+                            let currentRet = execSync(`cat /data/adb/neko/neko_res.txt 2>/dev/null`);
+                            
+                            if (currentRet) {
+                                let displayRet = currentRet.replace(/___EOF___|___TIMEOUT___/g, '').trim();
+                                if (outBox) outBox.textContent = displayRet || "等待输出...";
+                                scrollToBottom();
+                            }
+                            
+                            if (currentRet.includes('___EOF___') || currentRet.includes('___TIMEOUT___')) {
+                                finished = true;
+                                break;
+                            }
+                            
+                            if (Date.now() - startTime > 20000) {
+                                if (outBox) outBox.textContent = "执行超时（前端等待20秒无果）";
+                                toolResult = "执行超时，未获取到结果。";
+                                finished = true;
+                                break;
+                            }
+                        }
+
+                        if (finished && !toolResult) {
+                            let lineNum = 1;
+                            while (lineNum <= 500) {
+                                let line = execSync(`sed -n '${lineNum}p' /data/adb/neko/neko_res.txt`);
+                                if (line.trim() === "___EOF___" || line.trim() === "___TIMEOUT___") break;
+                                allText += line + "\n";
+                                lineNum++;
+                                if (lineNum % 50 === 0) await new Promise(r => setTimeout(r, 0));
+                            }
+                            toolResult = allText.trim() || "(无输出)";
+                            if (cardEl) {
+                                cardEl.classList.remove('danger');
+                                cardEl.innerHTML = `<div>🐱 系统操作记录：</div>
+                                    <div class="exec-cmd">${escapeHTML(args.command)}</div>
+                                    <div class="exec-out">${escapeHTML(toolResult)}</div>
+                                    <div class="exec-status">✅ 执行完成</div>`;
+                            }
+                        }
+                    } else {
+                        if (cardEl) {
+                            cardEl.classList.remove('danger');
+                            cardEl.innerHTML = `<div>🐱 系统操作记录：</div>
+                                <div class="exec-cmd">${escapeHTML(args.command)}</div>
+                                <div class="exec-status">❌ 已取消执行</div>`;
+                        }
+                        toolResult = "用户拒绝执行此命令。";
+                    }
+                }
+            } else {
+                if (cardEl) {
+                    cardEl.classList.add('done');
+                    cardEl.innerHTML = `<div>🐱 正在执行...</div><div class="exec-cmd">${tc.function.name}</div><div class="exec-out">加载中...</div>`;
+                }
+                
+                if (tc.function.name === 'read_ui') {
+                    toolResult = await callAgentReadUI();
+                } 
+                else if (tc.function.name === 'read_ocr') {
+                    toolResult = await callAgentReadOCR();
+                }
+                else if (tc.function.name === 'tap_screen') {
+                    if (isAgentMode) sendToast(`👆 点击屏幕 (${args.x}, ${args.y})`);
+                    toolResult = await callAgentAction(`input tap ${args.x} ${args.y}`);
+                }
+                else if (tc.function.name === 'swipe_screen') {
+                    if (isAgentMode) sendToast(`👆 滑动屏幕 (${args.start_x}, ${args.start_y}) → (${args.end_x}, ${args.end_y})`);
+                    toolResult = await callAgentAction(`input swipe ${args.start_x} ${args.start_y} ${args.end_x} ${args.end_y} 500`);
+                }
+                else if (tc.function.name === 'input_text') {
+                    if (isAgentMode) sendToast(`⌨️ 输入文字: ${args.text || ""}`);
+                    let txt = args.text || "";
+                    let safeText = txt.replace(/'/g, "'\\''");
+                    let cmd = `app_process -Djava.class.path=/data/adb/modules/neko/bin/yadb /data/adb/modules/neko/bin com.ysbing.yadb.Main -keyboard '${safeText}'`;
+                    
+                    try {
+                        let ret = execSync(cmd);
+                        if (ret && ret.trim()) {
+                            toolResult = `YADB 返回信息：${ret.trim()}，已尝试输入：${txt}`;
+                        } else {
+                            toolResult = `已通过 YADB 输入文字：${txt}`;
+                        }
+                    } catch(e) {
+                        toolResult = `YADB 输入失败：${e.message}`;
+                    }
+                }
+                else if (tc.function.name === 'press_key') {
+                    if (isAgentMode) sendToast(`🔘 按键: ${args.keycode}`);
+                    toolResult = await callAgentAction(`input keyevent ${args.keycode}`);
+                }
+                else if (tc.function.name === 'view_image') {
+                    if (isAgentMode) sendToast(`🖼️ 正在识图，请稍候...`);
+                    toolResult = await callAgentViewImage();
+                }
+                else if (tc.function.name === 'notify_user') {
+                    toolResult = await callAgentNotify(args.text);
+                }
+                else if (tc.function.name === 'search') {
+                    if (isAgentMode) sendToast(`🔍 正在搜索: ${args.query}`);
+                    toolResult = await callSearchAPI(args.query);
+                }
+                else if (tc.function.name === 'fetch_url') {
+                    if (isAgentMode) sendToast(`🌐 正在抓取网页...`);
+                    toolResult = await callFetchAPI(args.url);
+                }
+                else if (tc.function.name === 'write_memory') {
+                    toolResult = await callWriteMemory(args.content);
+                }
+                else if (tc.function.name === 'search_memory') {
+                    toolResult = await callSearchMemory(args.keyword);
+                }
+                else if (tc.function.name === 'delete_memory') {
+                    toolResult = await callDeleteMemory(args.timestamp);
+                }
+            }
+
+            if (!toolResult) toolResult = "(无输出文本)";
+            toolMsg.content = toolResult;
+            await saveHistory();
+
+            if (cardEl && !cardEl.innerHTML.includes('执行完成') && !cardEl.innerHTML.includes('已取消')) {
+                cardEl.innerHTML = `<div>🐱 系统自动执行：</div>
+                    <div class="exec-cmd">${escapeHTML(tc.function.name)}</div>
+                    <div class="exec-out">${escapeHTML(toolResult)}</div>
+                    <div class="exec-status">✅ 执行完成</div>`;
+            }
+        }
+
+        if (currentAbortController && currentAbortController.signal.aborted) return;
+
+        let newCtx = getContextPayload();
+        let newStreamWrapper = document.createElement('div');
+        newStreamWrapper.className = 'msg-wrapper bot';
+        newStreamWrapper.id = 'streaming-bubble';
+        let header = buildHeader('bot', '分析执行结果', Date.now());
+        if (header) newStreamWrapper.appendChild(header);
+        let newDiv = document.createElement('div');
+        newDiv.className = 'message bot';
+        newStreamWrapper.appendChild(newDiv);
+        chatContainer.appendChild(newStreamWrapper);
+        scrollToBottom();
+
+        await processStreamAndFollowUp(newCtx, currentModel, effort, newStreamWrapper, 1); 
+    }
+
+    function handleSendOrStop() {
+        if (isGenerating) {
+            if (currentAbortController) {
+                currentAbortController.abort();
+            }
+            return;
+        }
+        sendMessage();
+    }
+
+    async function sendMessage() {
+        if (isGenerating) return;
+        const clickTime = Date.now();
+
+        try {
+            let text = userInput.value.trim();
+            if (!text && currentAttachments.length === 0) return;
+
+            if (!cfg.API_KEY) {
+                appendMessage('error-msg', '❌ 未配置 API Key，请编辑 /data/adb/neko/config.conf 后点菜单「重载配置」');
+                return;
+            }
+
+            isGenerating = true;
+            currentAbortController = new AbortController();
+            userInput.disabled = true;
+            sendBtn.classList.add('stopping');
+            sendBtn.innerText = '停止';
+
+            isAgentMode = false;
+
+            let hasImages = false;
+            let textFileNames = [];
+            let textFileContents = [];
+            let highImages = [];
+
+            if (currentAttachments.length > 0) {
+                currentAttachments.forEach(att => {
+                    if (att.type === 'image') {
+                        hasImages = true;
+                        highImages.push(att.high);
+                    } else if (att.type === 'text') {
+                        textFileNames.push(att.name);
+                        textFileContents.push(att.content);
+                    }
+                });
+            }
+
+            let currentModel = cfg.MODEL_FLASH;
+            let effort = flashEffort;
+
+            if (hasImages) {
+                if (!cfg.MODEL_FLASH) {
+                    appendMessage('error-msg', '❌ 未配置 MODEL_FLASH，无法识图，请检查 config.conf');
+                    return;
+                }
+                currentModel = cfg.MODEL_FLASH;
+                effort = flashEffort;
+            } else {
+                if (currentMode === 'auto') {
+                    let routePlaceholders = [];
+                    if (currentAttachments.some(a => a.type === 'image')) routePlaceholders.push('[图片]');
+                    if (currentAttachments.some(a => a.type === 'text')) {
+                        let officeExts = ['docx', 'pptx', 'xlsx', 'pdf', 'rtf', 'odt', 'odp', 'ods'];
+                        currentAttachments.filter(a => a.type === 'text').forEach(a => {
+                            let ext = a.name.split('.').pop().toLowerCase();
+                            if (officeExts.includes(ext)) {
+                                routePlaceholders.push(`[${ext.toUpperCase()}文件]`);
+                            } else {
+                                routePlaceholders.push('[文本文件]');
+                            }
+                        });
+                    }
+                    let routeInput = (routePlaceholders.length > 0 ? routePlaceholders.join(' ') + ' ' : '') + text;
+                    
+                    const taskType = await routeTask(routeInput);
+                    if (taskType.startsWith('PRO_')) {
+                        if (!cfg.MODEL_PRO) { 
+                            appendMessage('error-msg', '⚠️ 自动选择推理但未配置 MODEL_PRO，回退至 Flash'); 
+                            currentModel = cfg.MODEL_FLASH;
+                            effort = 'high';
+                        } else {
+                            currentModel = cfg.MODEL_PRO;
+                            effort = taskType.replace('PRO_', '').toLowerCase();
+                        }
+                    } else {
+                        currentModel = cfg.MODEL_FLASH;
+                        effort = taskType.replace('FLASH_', '').toLowerCase();
+                    }
+                } else if (currentMode === 'pro') {
+                    if (!cfg.MODEL_PRO) { appendMessage('error-msg', '❌ 未配置 MODEL_PRO，请检查 config.conf'); return; }
+                    currentModel = cfg.MODEL_PRO; 
+                    effort = proEffort;
+                } else {
+                    currentModel = cfg.MODEL_FLASH;
+                    effort = flashEffort;
+                }
+            }
+
+            userInput.value = ''; 
+            userInput.style.height = 'auto';
+            
+            let msgObj = { 
+                id: getNextId(), role: 'user', content: text, timestamp: Date.now()
+            };
+            
+            if (textFileNames.length > 0) {
+                msgObj.fileNames = textFileNames;
+                msgObj.fileContents = textFileContents;
+            }
+            if (hasImages) {
+                msgObj.images = currentAttachments.filter(a => a.type === 'image').map(a => a.low);
+            }
+            
+            chatHistory.push(msgObj);
+            
+            currentAttachments = [];
+            renderAttachmentPreview();
+            
+            renderedCount = 50;
+            renderMessageWithTags(msgObj, 'user');
+            scrollToBottom();
+
+            const ctx = getContextPayload();
+            
+            if (hasImages) {
+                let lastUserMsg = ctx[ctx.length - 2];
+                if (lastUserMsg && lastUserMsg.role === 'user') {
+                    let contentArr = [{ type: "text", text: lastUserMsg.content }];
+                    highImages.forEach(imgBase64 => {
+                        contentArr.push({ type: "image_url", image_url: { url: imgBase64 } });
+                    });
+                    lastUserMsg.content = contentArr;
+                }
+            }
+
+            let modelTag = currentModel === cfg.MODEL_PRO ? 'Pro' : 'Flash';
+            if (hasImages) modelTag = 'Flash (Vision)';
+            if (effort !== 'none') modelTag += ` (${effort})`;
+            
+            let streamWrapper = document.createElement('div');
+            streamWrapper.className = 'msg-wrapper bot';
+            streamWrapper.id = 'streaming-bubble';
+            let header = buildHeader('bot', modelTag, Date.now());
+            if (header) streamWrapper.appendChild(header);
+            let div = document.createElement('div');
+            div.className = 'message bot';
+            streamWrapper.appendChild(div);
+            chatContainer.appendChild(streamWrapper);
+            scrollToBottom();
+
+            await processStreamAndFollowUp(ctx, currentModel, effort, streamWrapper);
+
+        } catch (error) {
+            const sb = document.getElementById('streaming-bubble');
+            if (sb) sb.remove();
+            appendMessage('error-msg', `❌ 运行异常: ${error.message}`);
+        } finally {
+            isGenerating = false;
+            currentAbortController = null;
+            
+            const elapsed = Date.now() - clickTime;
+            const remainingCd = Math.max(0, 1000 - elapsed);
+            
+            if (remainingCd > 0) {
+                setTimeout(() => { resetSendBtnState(); }, remainingCd);
+            } else {
+                resetSendBtnState();
+            }
+        }
+    }
+
+    updateMenuChecks();
+    loadConfig();
+    initData();
+</script>
+</body>
+</html>
