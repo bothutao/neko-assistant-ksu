@@ -6,7 +6,7 @@
 
 本项目遵循通用的 Android Root 模块目录规范（`/data/adb/modules/neko`），通过标准 Shell 指令与 root 权限交互。
 
-**理论上兼容 KernelSU 及其所有衍生分支（如 APatch、MKSU、SukiSU 等），但目前仅在开发者个人的 SukiSU 环境下完成了完整的实机测试与验证。** 若您使用其他管理器，请自行测试。
+**理论上兼容 KernelSU 及其所有衍生分支，但目前仅在开发者个人的 SukiSU 环境下完成了完整的实机测试与验证。** 若您使用其他管理器，请自行测试。
 
 ## 核心特性
 
